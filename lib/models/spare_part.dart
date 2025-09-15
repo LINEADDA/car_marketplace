@@ -1,45 +1,11 @@
-// Defines the possible conditions of a spare part using lowerCamelCase.
+import 'dart:convert';
+
 enum SparePartCondition {
   brandNew,
   usedLikeNew,
   usedGood,
   forParts,
   other,
-}
-
-// Extension to handle mapping between Dart enum and database string values.
-extension SparePartConditionX on SparePartCondition {
-  /// Converts the enum to the snake_case string format for the database.
-  String toDbValue() {
-    switch (this) {
-      case SparePartCondition.brandNew:
-        return 'brand_new';
-      case SparePartCondition.usedLikeNew:
-        return 'used_like_new';
-      case SparePartCondition.usedGood:
-        return 'used_good';
-      case SparePartCondition.forParts:
-        return 'for_parts';
-      case SparePartCondition.other:
-        return 'other';
-    }
-  }
-
-  /// Creates an enum value from a database string.
-  static SparePartCondition fromDbValue(String? value) {
-    switch (value) {
-      case 'brand_new':
-        return SparePartCondition.brandNew;
-      case 'used_like_new':
-        return SparePartCondition.usedLikeNew;
-      case 'used_good':
-        return SparePartCondition.usedGood;
-      case 'for_parts':
-        return SparePartCondition.forParts;
-      default:
-        return SparePartCondition.other;
-    }
-  }
 }
 
 class SparePart {
@@ -49,6 +15,7 @@ class SparePart {
   final String title;
   final String description;
   final SparePartCondition condition;
+  final double price;
   final DateTime createdAt;
 
   SparePart({
@@ -58,6 +25,7 @@ class SparePart {
     required this.title,
     required this.description,
     required this.condition,
+    required this.price,
     required this.createdAt,
   });
 
@@ -69,7 +37,8 @@ class SparePart {
       ownerId: map['owner_id'] as String,
       title: map['title'] as String,
       description: map['description'] as String,
-      condition: SparePartConditionX.fromDbValue(map['condition']),
+      condition: SparePartCondition.values.byName(map['condition'] as String),
+      price: (map['price'] as num?)?.toDouble() ?? 0.0,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
@@ -82,8 +51,14 @@ class SparePart {
       'owner_id': ownerId,
       'title': title,
       'description': description,
-      'condition': condition.toDbValue(),
+      'condition': condition.name,
+      'price': price,
       'created_at': createdAt.toIso8601String(),
     };
   }
+
+  String toJson() => json.encode(toMap());
+
+  factory SparePart.fromJson(String source) =>
+      SparePart.fromMap(json.decode(source) as Map<String, dynamic>);
 }

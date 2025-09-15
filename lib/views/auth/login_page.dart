@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../services/auth_service.dart'; 
+import '../../services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -11,45 +11,53 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _authService = AuthService();
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>(); // typed
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
   bool _isLoading = false;
   bool _showPassword = false;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _emailController
+      ..removeListener(() {})
+      ..dispose();
+    _passwordController
+      ..removeListener(() {})
+      ..dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
+ Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
 
+    Object? error;
     try {
       await _authService.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
-      if (mounted) {
-        context.go('/');
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
-      }
+      error = e;
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
+
+    if (!mounted) return; 
+    final router = GoRouter.of(context); 
+
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error logging in: $error')));
+      return;
+    }
+
+    router.go('/');
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -89,16 +97,16 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: _isLoading ? null : _login,
                   child: _isLoading
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
                       : const Text('Login'),
                 ),
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () => context.go('/signup'),
                   child: const Text("Don't have an account? Sign Up"),
-                )
+                ),
               ],
             ),
           ),

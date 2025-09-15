@@ -5,121 +5,101 @@ import '../models/spare_part.dart';
 class SparePartService {
   final SupabaseClient _supabaseClient;
   static const String _tableName = 'spare_parts';
-  static const String _storageBucket = 'spare-parts'; // Storage bucket for part media
+  static const String _storageBucket = 'spare-parts';
 
   SparePartService(this._supabaseClient);
 
-  // Uploads a single media file (image or video) for a spare part.
   Future<String> uploadSparePartMediaFile(String userId, String partId, File file) async {
     try {
-      // Create a unique file path.
       final fileExtension = file.path.split('.').last.toLowerCase();
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
       final filePath = '$userId/$partId/$fileName';
-
-      // Upload the file to the 'spare-parts' bucket.
       await _supabaseClient.storage.from(_storageBucket).upload(
             filePath,
             file,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
           );
-
-      // Retrieve and return the public URL.
-      final publicUrl =
-          _supabaseClient.storage.from(_storageBucket).getPublicUrl(filePath);
-
-      return publicUrl;
+      return _supabaseClient.storage.from(_storageBucket).getPublicUrl(filePath);
     } catch (e) {
       print('An unexpected error occurred during spare part media upload: $e');
       rethrow;
     }
   }
 
-  // Fetches all public spare parts for the marketplace view.
   Future<List<SparePart>> getAllPublicSpareParts() async {
     try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .select()
-          .eq('is_public', true)
-          .order('created_at', ascending: false);
-
+      final response = await _supabaseClient.from(_tableName).select().order('created_at', ascending: false);
       return response.map((map) => SparePart.fromMap(map)).toList();
-    } on PostgrestException catch (e) {
-      print('Error fetching all spare parts: ${e.message}');
-      rethrow;
     } catch (e) {
       print('An unexpected error occurred in getAllPublicSpareParts: $e');
       rethrow;
     }
   }
 
-  // Fetches a list of spare parts owned by a specific user profile.
   Future<List<SparePart>> getSparePartsForUser(String userId) async {
     try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .select()
-          .eq('owner_id', userId);
-
+      final response = await _supabaseClient.from(_tableName).select().eq('owner_id', userId).order('created_at', ascending: false);
       return response.map((map) => SparePart.fromMap(map)).toList();
-    } on PostgrestException catch (e) {
-      print('Error fetching spare parts for user $userId: ${e.message}');
-      rethrow;
     } catch (e) {
       print('An unexpected error occurred in getSparePartsForUser: $e');
       rethrow;
     }
   }
 
-  // Adds a new spare part to the database.
   Future<SparePart> createSparePart(SparePart part) async {
     try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .insert(part.toMap())
-          .select()
-          .single();
-
+      final response = await _supabaseClient.from(_tableName).insert(part.toMap()).select().single();
       return SparePart.fromMap(response);
-    } on PostgrestException catch (e) {
-      print('Error creating spare part: ${e.message}');
-      rethrow;
     } catch (e) {
       print('An unexpected error occurred in createSparePart: $e');
       rethrow;
     }
   }
 
-  // Updates an existing spare part in the database.
   Future<SparePart> updateSparePart(SparePart part) async {
     try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .update(part.toMap())
-          .eq('id', part.id)
-          .select()
-          .single();
-
+      final response = await _supabaseClient.from(_tableName).update(part.toMap()).eq('id', part.id).select().single();
       return SparePart.fromMap(response);
-    } on PostgrestException catch (e) {
-      print('Error updating spare part ${part.id}: ${e.message}');
-      rethrow;
     } catch (e) {
       print('An unexpected error occurred in updateSparePart: $e');
       rethrow;
     }
   }
 
-  // Deletes a spare part from the database.
+  Future<SparePart?> getPartById(String partId) async {
+    try {
+      final response = await _supabaseClient.from('spare_parts').select().eq('id', partId).single();
+      return SparePart.fromMap(response);
+    } catch (e) {
+      print('Error fetching part by ID: $e');
+      return null;
+    }
+  }
+
+  // --- UPDATED METHOD: Now deletes associated storage files ---
   Future<void> deleteSparePart(String partId) async {
     try {
+      // Step 1: Fetch the part to get its ownerId for the storage path.
+      final part = await getPartById(partId);
+      if (part == null) {
+        print('Part not found, skipping delete.');
+        return;
+      }
+
+      // Step 2: If the part has images, delete the entire folder from storage.
+      if (part.mediaUrls.isNotEmpty) {
+        final folderPath = '${part.ownerId}/${part.id}';
+        final files = await _supabaseClient.storage.from(_storageBucket).list(path: folderPath);
+        if (files.isNotEmpty) {
+          final pathsToRemove = files.map((file) => '$folderPath/${file.name}').toList();
+          await _supabaseClient.storage.from(_storageBucket).remove(pathsToRemove);
+        }
+      }
+
+      // Step 3: Delete the database record.
       await _supabaseClient.from(_tableName).delete().eq('id', partId);
-    } on PostgrestException catch (e) {
-      print('Error deleting spare part $partId: ${e.message}');
-      rethrow;
     } catch (e) {
-      print('An unexpected error occurred in deleteSparePart: $e');
+      print('An error occurred during full deletion of spare part $partId: $e');
       rethrow;
     }
   }

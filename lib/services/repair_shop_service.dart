@@ -1,130 +1,124 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../models/repair_shop.dart'; // Assuming a RepairShop model exists
+import '../models/repair_shop.dart';
 
 class RepairShopService {
-  final SupabaseClient _supabaseClient;
-  static const String _tableName = 'repair_shops';
-  static const String _storageBucket = 'shop-media'; // Storage bucket for shop logos/photos
+  final SupabaseClient _client;
 
-  RepairShopService(this._supabaseClient);
+  RepairShopService(this._client);
 
-  // Uploads a single media file (image or video) for a repair shop.
-  Future<String> uploadShopMediaFile(String userId, String shopId, File file) async {
-    try {
-      // Create a unique file path to prevent overwrites.
-      final fileExtension = file.path.split('.').last.toLowerCase();
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
-      final filePath = '$userId/$shopId/$fileName';
-
-      // Upload the file to the 'shop-media' bucket.
-      await _supabaseClient.storage.from(_storageBucket).upload(
-            filePath,
-            file,
-            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
-          );
-
-      // Retrieve and return the public URL for the uploaded file.
-      final publicUrl =
-          _supabaseClient.storage.from(_storageBucket).getPublicUrl(filePath);
-
-      return publicUrl;
-    } catch (e) {
-      print('An unexpected error occurred during shop media upload: $e');
-      rethrow;
-    }
-  }
-
-  // Fetches all public repair shops for users to browse.
+  // Fetches ALL repair shops for the public listing (no RLS for shop services here)
   Future<List<RepairShop>> getAllPublicRepairShops() async {
-    try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .select()
-          .eq('is_public', true) // Only fetch shops marked as public
-          .order('name', ascending: true); // Order alphabetically by name
-
-      return response.map((map) => RepairShop.fromMap(map)).toList();
-    } on PostgrestException catch (e) {
-      print('Error fetching all repair shops: ${e.message}');
-      rethrow;
-    } catch (e) {
-      print('An unexpected error occurred in getAllPublicRepairShops: $e');
-      rethrow;
-    }
+    final response = await _client.from('repair_shops').select();
+    final data = response as List;
+    return data.map((item) => RepairShop.fromMap(item)).toList();
   }
 
-  // Fetches the repair shop owned by a specific user profile.
-  // Returns null if the user does not own a shop.
-  Future<RepairShop?> getRepairShopForUser(String userId) async {
-    try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .select()
-          .eq('owner_id', userId)
-          .maybeSingle(); // Use maybeSingle() to safely handle 0 or 1 result.
+  // Creates a new repair shop (media_urls is handled separately)
+  Future<Map<String, dynamic>> createRepairShop(
+    Map<String, dynamic> shopData,
+  ) async {
+    shopData.remove('id'); // Ensure ID is not sent for new creation
+    final response =
+        await _client.from('repair_shops').insert(shopData).select().single();
+    return response;
+  }
 
-      if (response == null) {
-        return null;
+  // Updates an existing repair shop
+  Future<void> updateRepairShop(RepairShop shop) async {
+    // When updating, we convert the ShopService list back to a list of maps (JSONB)
+    await _client.from('repair_shops').update(shop.toMap()).eq('id', shop.id);
+  }
+
+  // Uploads shop media files (remains largely the same)
+  Future<String> uploadShopMediaFile(
+    String userId,
+    String shopId,
+    File file,
+  ) async {
+    final path = '$userId/$shopId/${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await _client.storage.from('repair_shop_media').upload(path, file);
+    return _client.storage.from('repair_shop_media').getPublicUrl(path);
+  }
+
+  // Updates ONLY the media URLs for a shop (useful after initial creation)
+  Future<void> updateShopMedia(String shopId, List<String> mediaUrls) async {
+    await _client
+        .from('repair_shops')
+        .update({'media_urls': mediaUrls}).eq('id', shopId);
+  }
+
+  // Fetches a single repair shop by its ID (for detail view)
+  // This now directly uses the ShopService list from the JSONB column
+  Future<RepairShop> getRepairShopById(String shopId) async {
+    final response =
+        await _client.from('repair_shops').select().eq('id', shopId).single();
+    return RepairShop.fromMap(response);
+  }
+
+  // Fetches a repair shop for a specific owner (for 'My Repair Shop' page)
+  // This also directly uses the ShopService list from the JSONB column
+  Future<RepairShop?> getShopForOwner(String ownerId) async {
+    final response =
+        await _client
+            .from('repair_shops')
+            .select()
+            .eq('owner_id', ownerId)
+            .maybeSingle();
+    if (response == null) {
+      return null;
+    }
+    return RepairShop.fromMap(response);
+  }
+
+  Future<List<RepairShop>> getShopsByOwnerId(String ownerId) async {
+    final response = await _client
+        .from('repair_shops')
+        .select()
+        .eq('owner_id', ownerId);
+    final data = response as List;
+    return data.map((item) => RepairShop.fromMap(item)).toList();
+  }
+
+  /// Deletes an entire repair shop, including all associated files in storage.
+  Future<void> deleteRepairShop(String shopId, String ownerId) async {
+    try {
+      final folderPath = '$ownerId/$shopId';
+      final filesInFolder = await _client.storage.from('repair_shop_media').list(path: folderPath);
+
+      if (filesInFolder.isNotEmpty) {
+        final pathsToRemove = filesInFolder.map((file) => '$folderPath/${file.name}').toList();
+        await _client.storage.from('repair_shop_media').remove(pathsToRemove);
       }
-      return RepairShop.fromMap(response);
-    } on PostgrestException catch (e) {
-      print('Error fetching repair shop for user $userId: ${e.message}');
-      rethrow;
+
+      await _client.from('repair_shops').delete().eq('id', shopId);
+      
     } catch (e) {
-      print('An unexpected error occurred in getRepairShopForUser: $e');
+      print('Error during full deletion of shop $shopId: $e');
       rethrow;
     }
   }
 
-  // Creates a new repair shop record.
-  Future<RepairShop> createRepairShop(RepairShop shop) async {
+  Future<void> deleteShopService(String shopId, String serviceId) async {
     try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .insert(shop.toMap())
-          .select()
+
+      final shopData = await _client
+          .from('repair_shops')
+          .select('services')
+          .eq('id', shopId)
           .single();
+      
+      final currentServices = List<Map<String, dynamic>>.from(shopData['services'] ?? []);
 
-      return RepairShop.fromMap(response);
-    } on PostgrestException catch (e) {
-      print('Error creating repair shop: ${e.message}');
-      rethrow;
+      currentServices.removeWhere((service) => service['id'] == serviceId);
+
+      await _client
+          .from('repair_shops')
+          .update({'services': currentServices})
+          .eq('id', shopId);
+
     } catch (e) {
-      print('An unexpected error occurred in createRepairShop: $e');
-      rethrow;
-    }
-  }
-
-  // Updates an existing repair shop.
-  Future<RepairShop> updateRepairShop(RepairShop shop) async {
-    try {
-      final response = await _supabaseClient
-          .from(_tableName)
-          .update(shop.toMap())
-          .eq('id', shop.id)
-          .select()
-          .single();
-
-      return RepairShop.fromMap(response);
-    } on PostgrestException catch (e) {
-      print('Error updating repair shop ${shop.id}: ${e.message}');
-      rethrow;
-    } catch (e) {
-      print('An unexpected error occurred in updateRepairShop: $e');
-      rethrow;
-    }
-  }
-
-  // Deletes a repair shop.
-  Future<void> deleteRepairShop(String shopId) async {
-    try {
-      await _supabaseClient.from(_tableName).delete().eq('id', shopId);
-    } on PostgrestException catch (e) {
-      print('Error deleting repair shop $shopId: ${e.message}');
-      rethrow;
-    } catch (e) {
-      print('An unexpected error occurred in deleteRepairShop: $e');
+      print('Error deleting service $serviceId from shop $shopId: $e');
       rethrow;
     }
   }

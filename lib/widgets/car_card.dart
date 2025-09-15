@@ -1,99 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/car.dart';
-import '../utils/helpers.dart';
 
 class CarCard extends StatelessWidget {
   final Car car;
   final VoidCallback? onTap;
+  final bool showListingType; // Add this new property
 
   const CarCard({
-    super.key, // Corrected constructor
+    super.key,
     required this.car,
     this.onTap,
+    this.showListingType = true, // Default to true to not break other pages
   });
 
   @override
   Widget build(BuildContext context) {
-    // ... build method remains exactly the same
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-        elevation: 4.0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+    final currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12.0)),
-              child: car.mediaUrls.isNotEmpty
-                  ? Image.network(
-                      car.mediaUrls.first,
-                      height: 180,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          height: 180,
-                          color: Colors.grey[300],
-                          child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
-                        );
-                      },
-                    )
-                  : Container(
-                      height: 180,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Icon(Icons.directions_car, size: 80, color: Colors.grey),
-                      ),
-                    ),
-            ),
+            if (car.mediaUrls.isNotEmpty)
+              Image.network(
+                car.mediaUrls.first,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
+              )
+            else
+              _buildPlaceholderImage(),
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${car.make} ${car.model}',
+                    '${car.year} ${car.make} ${car.model}',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4.0),
-                  Text(
-                    '${car.year} • ${Helpers.formatNumber(car.mileage)} miles',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[700]),
-                  ),
-                  const SizedBox(height: 8.0),
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
-                      const SizedBox(width: 4.0),
-                      Expanded(
-                        child: Text(
-                          car.location,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8.0),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Chip(
-                      label: Text(
-                        car.forSale ? 'For Sale' : 'Not For Sale',
-                        style: TextStyle(
-                          color: car.forSale ? Colors.green[800] : Colors.red[800],
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      backgroundColor: car.forSale ? Colors.green[100] : Colors.red[100],
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  const SizedBox(height: 4),
+
+                  // --- Conditionally display the subtitle ---
+                  if (showListingType)
+                    Text(
+                      car.forSale ? 'For Sale' : 'For Booking',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                     ),
-                  ),
+                  
+                  const SizedBox(height: 8),
+                  _buildPriceDisplay(context, car, currencyFormatter),
                 ],
               ),
             ),
@@ -101,5 +66,40 @@ class CarCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // Helper methods to keep the build method clean
+  Widget _buildPlaceholderImage() {
+    return Container(
+      height: 180,
+      color: Colors.grey,
+      child: const Center(child: Icon(Icons.directions_car_filled, size: 80, color: Colors.grey)),
+    );
+  }
+
+  Widget _buildPriceDisplay(BuildContext context, Car car, NumberFormat currencyFormatter) {
+    if (car.forSale && car.salePrice != null) {
+      return Text(
+        currencyFormatter.format(car.salePrice),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+      );
+    } else if (!car.forSale && car.bookingRatePerDay != null) {
+      return RichText(
+        text: TextSpan(
+          style: DefaultTextStyle.of(context).style.copyWith(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+          children: [
+            TextSpan(text: currencyFormatter.format(car.bookingRatePerDay)),
+            const TextSpan(
+              text: ' / day',
+              style: TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink(); // Don't show anything if no price
   }
 }

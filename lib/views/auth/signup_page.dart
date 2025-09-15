@@ -135,7 +135,7 @@ class _SignupPageState extends State<SignupPage> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   isExpanded: true,
-                  value: _selectedRole,
+                  initialValue: _selectedRole,
                   hint: const Text('Select Role'),
                   items: _roles
                       .map((role) => DropdownMenuItem(
