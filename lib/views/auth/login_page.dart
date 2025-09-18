@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/custom_app_bar.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -54,15 +55,13 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    router.go('/');
+    router.push('/');
   }
-
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
+      appBar: const CustomAppBar(title: 'Login'),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -104,7 +103,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 16),
                 TextButton(
-                  onPressed: () => context.go('/signup'),
+                  onPressed: () => context.push('/signup'),
                   child: const Text("Don't have an account? Sign Up"),
                 ),
               ],

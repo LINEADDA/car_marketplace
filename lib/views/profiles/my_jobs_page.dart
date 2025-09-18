@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/job_posting.dart';
 import '../../models/skilled_worker.dart';
@@ -6,8 +7,6 @@ import '../../models/user_profile.dart';
 import '../../services/job_service.dart';
 import '../../services/profile_service.dart';
 import '../../widgets/custom_app_bar.dart';
-import '../jobs/add_edit_job_posting_page.dart';
-import '../jobs/add_edit_skilled_worker_page.dart';
 
 class MyJobsPage extends StatefulWidget {
   const MyJobsPage({super.key});
@@ -33,7 +32,6 @@ class _MyJobsPageState extends State<MyJobsPage> {
   Future<void> _fetchInitialData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
       final profile = await _profileService.getProfile(userId);
@@ -65,41 +63,20 @@ class _MyJobsPageState extends State<MyJobsPage> {
     );
   }
 
-  /// Fetches and displays job postings for a shop owner.
   Widget _buildShopOwnerView() {
     final userId = Supabase.instance.client.auth.currentUser!.id;
-
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
-        onPressed: () async {
-          final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddEditJobPostingPage()));
-          if (result == true) {
-            setState(() {});
-          }
-        },
+        onPressed: () => context.push('/jobs/postings/add'),
       ),
       body: FutureBuilder<List<JobPosting>>(
         future: _jobService.getJobPostingsForOwner(userId),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
           final postings = snapshot.data ?? [];
-
-          if (postings.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('You have not posted any jobs yet.\nTap the + button to create one.', textAlign: TextAlign.center),
-              ),
-            );
-          }
-
+          if (postings.isEmpty) return const Center(child: Text('You have not posted any jobs yet.', textAlign: TextAlign.center));
           return RefreshIndicator(
             onRefresh: () async => setState(() {}),
             child: ListView.builder(
@@ -111,17 +88,8 @@ class _MyJobsPageState extends State<MyJobsPage> {
                   child: ListTile(
                     title: Text(post.jobTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(post.location),
-                    trailing: Switch(
-                      value: post.isActive,
-                      onChanged: (value) => _toggleStatus(post),
-                      activeThumbColor: Theme.of(context).colorScheme.primary,
-                    ),
-                    onTap: () async {
-                       final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AddEditJobPostingPage(postingToEdit: post)));
-                       if (result == true) {
-                         setState(() {});
-                       }
-                    },
+                    trailing: Switch(value: post.isActive, onChanged: (value) => _toggleStatus(post)),
+                    onTap: () => context.push('/jobs/postings/edit/${post.id}'),
                   ),
                 );
               },
@@ -132,46 +100,29 @@ class _MyJobsPageState extends State<MyJobsPage> {
     );
   }
 
-  /// Displays the skilled worker profile for a regular user or driver.
   Widget _buildWorkerView() {
     final userId = Supabase.instance.client.auth.currentUser!.id;
-
     return FutureBuilder<SkilledWorker?>(
       future: _jobService.getSkilledWorkerForOwner(userId),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
         final worker = snapshot.data;
-
         if (worker == null) {
           return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('You are not listed as available for hire.', textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    child: const Text('Create Your Worker Profile'),
-                    onPressed: () async {
-                       final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddEditSkilledWorkerPage()));
-                       if (result == true) {
-                         setState(() {});
-                       }
-                    },
-                  ),
-                ],
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('You are not listed as available for hire.', textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  child: const Text('Create Your Worker Profile'),
+                  onPressed: () => context.push('/jobs/worker-profile/add'),
+                ),
+              ],
             ),
           );
         }
-
         return Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -184,12 +135,7 @@ class _MyJobsPageState extends State<MyJobsPage> {
                   title: Text(worker.fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(worker.primarySkill),
                   trailing: const Icon(Icons.edit_outlined),
-                  onTap: () async {
-                    final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AddEditSkilledWorkerPage(workerToEdit: worker)));
-                    if (result == true) {
-                      setState(() {});
-                    }
-                  },
+                  onTap: () => context.push('/jobs/worker-profile/edit/${worker.id}'),
                 ),
               ),
             ],
@@ -199,11 +145,9 @@ class _MyJobsPageState extends State<MyJobsPage> {
     );
   }
 
-  /// Toggles the 'is_active' status of a job posting.
   Future<void> _toggleStatus(JobPosting post) async {
     try {
-      await _jobService.toggleJobPostingStatus(post.id, post.isActive);
-      // Refresh the list to show the updated status
+      await _jobService.toggleJobPostingStatus(post.id, !post.isActive);
       setState(() {});
     } catch (e) {
       if (mounted) {

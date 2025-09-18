@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Marketplace Home'),
+    return ScaffoldWithNav(
+      title: 'AppName',
+      currentRoute: '/',
+      showHomeIcon: false,
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -17,35 +19,31 @@ class HomePage extends StatelessWidget {
             title: 'Cars',
             subtitle: 'View cars for booking and for sale',
             icon: Icons.directions_car,
-            onTap: () => context.push('/cars'),
+            onTap: () => context.push('/cars/browse'), 
           ),
+          const SizedBox(height: 16),
           _buildFeatureCard(
             context,
             title: 'Spare Parts',
-            subtitle: 'View spare parts for sale',
+            subtitle: 'Buy and sell automotive parts',
             icon: Icons.build_circle_outlined,
             onTap: () => context.push('/spare-parts'),
           ),
+          const SizedBox(height: 16),
           _buildFeatureCard(
             context,
             title: 'Repair Shops',
-            subtitle: 'Browse and manage repair services',
+            subtitle: 'Find trusted repair services',
             icon: Icons.storefront_outlined,
             onTap: () => context.push('/repair-shops'),
           ),
+          const SizedBox(height: 16),
           _buildFeatureCard(
             context,
-            title: 'Jobs',
-            subtitle: 'Jobs listing and Seekers',
+            title: 'Jobs & Hiring',
+            subtitle: 'Find jobs or hire professionals',
             icon: Icons.work_outline,
             onTap: () => context.push('/jobs'),
-          ),
-          _buildFeatureCard(
-            context,
-            title: 'My Profile',
-            subtitle: 'View and edit your account details',
-            icon: Icons.person_outline,
-            onTap: () => context.push('/profile'),
           ),
         ],
       ),
@@ -60,23 +58,56 @@ class HomePage extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 16.0),
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: Icon(icon, color: Theme.of(context).colorScheme.onPrimaryContainer),
-        ),
-        title: Text(
-          title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  size: 30,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

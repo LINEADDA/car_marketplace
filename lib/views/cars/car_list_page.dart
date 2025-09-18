@@ -1,13 +1,21 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
 import '../../widgets/custom_app_bar.dart';
-import 'add_edit_car_page.dart';
-import 'car_detail_page.dart';
 
 class CarListPage extends StatefulWidget {
-  const CarListPage({super.key});
+  final bool? isForSale;
+  final bool isOwnerView;
+
+  const CarListPage({
+    super.key,
+    this.isForSale,
+    this.isOwnerView = false,
+  });
 
   @override
   State<CarListPage> createState() => _CarListPageState();
@@ -15,122 +23,255 @@ class CarListPage extends StatefulWidget {
 
 class _CarListPageState extends State<CarListPage> {
   late final CarService _carService;
-  List<Car> _myCars = [];
-  bool _isLoading = true;
-  String? _errorMessage;
+  late Future<List<Car>> _carsFuture;
 
   @override
   void initState() {
     super.initState();
     _carService = CarService(Supabase.instance.client);
-    _fetchMyCars();
+    _loadCars();
   }
 
-  Future<void> _fetchMyCars() async {
-    setState(() { _isLoading = true; _errorMessage = null; });
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-    try {
-      final cars = await _carService.getCarsByOwner(user.id);
-      if (mounted) setState(() { _myCars = cars; _isLoading = false; });
-    } catch (e) {
-      if (mounted) setState(() { _errorMessage = "Failed to load cars: $e"; _isLoading = false; });
-    }
-  }
-
-  void _navigateToAddOrEditCar({Car? carToEdit}) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => AddEditCarPage(carToEdit: carToEdit))).then((result) {
-      if (result == true) _fetchMyCars();
+  void _loadCars() {
+    setState(() {
+      if (widget.isOwnerView) {
+        _carsFuture = _carService.getCarsByOwner();
+      } else if (widget.isForSale == true) {
+        _carsFuture = _carService.getCarsForSale();
+      } else if (widget.isForSale == false) {
+        _carsFuture = _carService.getCarsForBooking();
+      } else {
+        _carsFuture = _carService.getAllPublicCars();
+      }
     });
   }
 
-  // --- CORRECTED: Handles car deletion using the correct service method ---
-  Future<void> _handleDeleteCar(Car car) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Car'),
-        content: Text('Are you sure you want to delete this ${car.make} ${car.model}? This action cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        await _carService.deleteCar(car.id); // Passes only the carId
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Car deleted successfully')));
-          _fetchMyCars(); // Refresh the list
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete car: $e'), backgroundColor: Colors.red));
-        }
-      }
-    }
+  String get _pageTitle {
+    if (widget.isOwnerView) return 'My Cars';
+    if (widget.isForSale == true) return 'Cars for Sale';
+    if (widget.isForSale == false) return 'Cars for Booking';
+    return 'All Cars';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: const CustomAppBar(title: 'My Garage'),
-        body: _buildBody(),
-        floatingActionButton: FloatingActionButton(onPressed: () => _navigateToAddOrEditCar(), child: const Icon(Icons.add)),
-      );
-  }
+      appBar: CustomAppBar(title: _pageTitle),
+      body: FutureBuilder<List<Car>>(
+        future: _carsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          final cars = snapshot.data ?? [];
 
-  Widget _buildBody() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_errorMessage != null) return Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)));
-    if (_myCars.isEmpty) return const Center(child: Text('Your garage is empty.', textAlign: TextAlign.center));
-    
-    return RefreshIndicator(
-      onRefresh: _fetchMyCars,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8.0).copyWith(bottom: 80),
-        itemCount: _myCars.length,
-        itemBuilder: (context, index) {
-          final car = _myCars[index];
-          return Card(
-            clipBehavior: Clip.antiAlias,
-            margin: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Column(
-              children: [
-                if (car.mediaUrls.isNotEmpty)
-                  InkWell(
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => CarDetailPage(carId: car.id))),
-                    child: Image.network(car.mediaUrls.first, height: 150, width: double.infinity, fit: BoxFit.cover),
-                  )
-                else
-                  Container(height: 150, color: Colors.grey[300], child: const Icon(Icons.directions_car, size: 60)),
-                ListTile(
-                  title: Text('${car.year} ${car.make} ${car.model}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(car.forSale ? 'For Sale' : 'For Booking'),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        _navigateToAddOrEditCar(carToEdit: car);
-                      } else if (value == 'delete') {
-                        _handleDeleteCar(car);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
-                    ],
+          if (cars.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.car_rental, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No cars available',
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.isOwnerView
+                        ? 'Add your first car to get started'
+                        : 'Check back later for new listings',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              _loadCars();
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: cars.length,
+              itemBuilder: (context, index) {
+                final car = cars[index];
+                return _buildCarCard(car);
+              },
             ),
           );
         },
+      ),
+      floatingActionButton: widget.isOwnerView
+          ? FloatingActionButton(
+              onPressed: () => context.push('/cars/add'),
+              child: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildCarCard(Car car) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final isLoggedIn = user != null;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      child: InkWell(
+        onTap: () {
+          if (isLoggedIn || !widget.isOwnerView) {
+            context.push('/cars/${car.id}');
+          } else {
+            _showLoginPrompt();
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 200,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                color: Colors.grey[300],
+              ),
+              child: car.mediaUrls.isNotEmpty
+                  ? ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                      child: Image.network(
+                        car.mediaUrls.first,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.car_rental, size: 64, color: Colors.grey),
+                      ),
+                    )
+                  : const Icon(Icons.car_rental, size: 64, color: Colors.grey),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${car.make} ${car.model} (${car.year})',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    car.forSale
+                        ? '₹${car.salePrice?.toStringAsFixed(0) ?? 'N/A'}'
+                        : '₹${car.bookingRatePerDay?.toStringAsFixed(0) ?? 'N/A'}/day',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          car.location,
+                          style: TextStyle(color: Colors.grey[600]),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (widget.isOwnerView) ...[
+                    const Divider(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => context.push('/cars/edit/${car.id}'),
+                          icon: const Icon(Icons.edit),
+                          label: const Text('Edit'),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _showDeleteDialog(car),
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLoginPrompt() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Login Required'),
+        content: const Text('Please login to view car details and contact sellers.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.push('/login');
+            },
+            child: const Text('Login'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteDialog(Car car) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Car'),
+        content: Text('Are you sure you want to delete ${car.make} ${car.model}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _carService.deleteCar(car.id);
+                if (mounted) {
+                  Navigator.pop(context);
+                  _loadCars();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Car deleted successfully')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error deleting car: $e')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }

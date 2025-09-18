@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/skilled_worker.dart';
 import '../../services/job_service.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart'; 
 import 'skilled_worker_detail_page.dart';
 
 class SkilledWorkersListPage extends StatefulWidget {
@@ -25,8 +25,9 @@ class _SkilledWorkersListPageState extends State<SkilledWorkersListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Available Professionals'),
+    return ScaffoldWithNav(  
+      title: 'Available Professionals',  
+      currentRoute: '/jobs/skilled-workers', 
       body: FutureBuilder<List<SkilledWorker>>(
         future: _workersFuture,
         builder: (context, snapshot) {

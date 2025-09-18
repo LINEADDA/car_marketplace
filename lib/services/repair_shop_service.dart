@@ -94,7 +94,6 @@ class RepairShopService {
       await _client.from('repair_shops').delete().eq('id', shopId);
       
     } catch (e) {
-      print('Error during full deletion of shop $shopId: $e');
       rethrow;
     }
   }
@@ -118,7 +117,6 @@ class RepairShopService {
           .eq('id', shopId);
 
     } catch (e) {
-      print('Error deleting service $serviceId from shop $shopId: $e');
       rethrow;
     }
   }

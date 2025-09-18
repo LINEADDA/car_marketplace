@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import '../../widgets/custom_app_bar.dart';
-import 'job_postings_list_page.dart';
-import 'skilled_workers_list_page.dart';
+import 'package:go_router/go_router.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 
 class JobListingTypePage extends StatelessWidget {
   const JobListingTypePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Jobs & Hiring'),
+    return ScaffoldWithNav(
+      title: 'Jobs & Hiring',
+      currentRoute: '/jobs',
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -21,11 +21,7 @@ class JobListingTypePage extends StatelessWidget {
               title: 'Find a Job',
               subtitle: 'Browse available job vacancies posted by shops.',
               icon: Icons.business_center_outlined,
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => const JobPostingsListPage(),
-                ));
-              },
+              onTap: () => context.push('/jobs/postings'),
             ),
             const SizedBox(height: 24),
             _buildOptionCard(
@@ -33,11 +29,7 @@ class JobListingTypePage extends StatelessWidget {
               title: 'Find a Professional',
               subtitle: 'Browse skilled workers available for hire.',
               icon: Icons.person_search_outlined,
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => const SkilledWorkersListPage(),
-                ));
-              },
+              onTap: () => context.push('/jobs/skilled-workers'),
             ),
           ],
         ),
@@ -64,7 +56,11 @@ class JobListingTypePage extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  icon,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(height: 16),
                 Text(title, style: Theme.of(context).textTheme.headlineSmall),
                 const SizedBox(height: 8),

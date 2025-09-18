@@ -5,13 +5,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
-import '../../services/profile_service.dart';
-import '../../utils/validators.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 
 class AddEditCarPage extends StatefulWidget {
+  final String? carId;
   final Car? carToEdit;
-  const AddEditCarPage({super.key, this.carToEdit});
+  final String? initialListingType;
+
+  const AddEditCarPage({
+    super.key,
+    this.carId,
+    this.carToEdit,
+    this.initialListingType,
+  });
 
   @override
   State<AddEditCarPage> createState() => _AddEditCarPageState();
@@ -20,10 +26,8 @@ class AddEditCarPage extends StatefulWidget {
 class _AddEditCarPageState extends State<AddEditCarPage> {
   final _formKey = GlobalKey<FormState>();
   late final CarService _carService;
-  late final ProfileService _profileService;
   final _uuid = const Uuid();
 
-  // --- Form Controllers ---
   final _makeController = TextEditingController();
   final _modelController = TextEditingController();
   final _yearController = TextEditingController();
@@ -33,54 +37,71 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   final _salePriceController = TextEditingController();
   final _bookingRateController = TextEditingController();
 
-  // --- State Variables ---
   FuelType _selectedFuelType = FuelType.petrol;
-  Transmission _selectedTransmission = Transmission.automatic;
-  bool _isForSale = false;
+  Transmission _selectedTransmission = Transmission.manual;
+  bool _isForSale = true;
+  String? _userRole;
+
   final List<XFile> _pickedImages = [];
   late List<String> _existingImageUrls;
-  bool _isLoading = true; // Start as loading to fetch role
-  String? _userRole;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _carService = CarService(Supabase.instance.client);
-    _profileService = ProfileService(Supabase.instance.client);
-    _loadUserRoleAndInitForm();
+    _fetchUserRole();
+
+    if (widget.initialListingType != null) {
+      _isForSale = widget.initialListingType == 'sale';
+    }
+
+    _existingImageUrls = List.from(widget.carToEdit?.mediaUrls ?? []);
+
+    if (widget.carToEdit != null) {
+      _populateFields();
+    }
   }
 
-  Future<void> _loadUserRoleAndInitForm() async {
-    final userId = Supabase.instance.client.auth.currentUser!.id;
-    final profile = await _profileService.getProfile(userId);
-
-    if (mounted) {
-      setState(() {
-        _userRole = profile?.role; // Store the user's role
-        _existingImageUrls = List<String>.from(
-          widget.carToEdit?.mediaUrls ?? [],
-        );
-
-        if (widget.carToEdit != null) {
-          final car = widget.carToEdit!;
-          _makeController.text = car.make;
-          _modelController.text = car.model;
-          _yearController.text = car.year.toString();
-          _mileageController.text = car.mileage.toString();
-          _locationController.text = car.location;
-          _descriptionController.text = car.description;
-          _salePriceController.text = car.salePrice?.toString() ?? '';
-          _bookingRateController.text = car.bookingRatePerDay?.toString() ?? '';
-          _selectedFuelType = car.fuelType;
-          _selectedTransmission = car.transmission;
-          _isForSale = car.forSale;
-        } else {
-          // Default based on role if creating a new car
-          _isForSale = _userRole != 'driver';
-        }
-        _isLoading = false; // Stop loading once role and data are set
-      });
+  Future<void> _fetchUserRole() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      if (mounted) setState(() => _isForSale = true);
+      return;
     }
+
+    try {
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .single();
+      if (mounted) {
+        setState(() {
+          _userRole = response['role'] as String?;
+          if (_userRole?.toLowerCase() != 'driver') {
+            _isForSale = true;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isForSale = true);
+    }
+  }
+
+  void _populateFields() {
+    final car = widget.carToEdit!;
+    _makeController.text = car.make;
+    _modelController.text = car.model;
+    _yearController.text = car.year.toString();
+    _mileageController.text = car.mileage.toString();
+    _locationController.text = car.location;
+    _descriptionController.text = car.description;
+    _salePriceController.text = car.salePrice?.toString() ?? '';
+    _bookingRateController.text = car.bookingRatePerDay?.toString() ?? '';
+    _selectedFuelType = car.fuelType;
+    _selectedTransmission = car.transmission;
+    _isForSale = car.forSale;
   }
 
   @override
@@ -98,11 +119,30 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
 
   Future<void> _pickImages() async {
     final images = await ImagePicker().pickMultiImage(imageQuality: 80);
-    if (images.isNotEmpty) setState(() => _pickedImages.addAll(images));
+    if (images.isNotEmpty) {
+      setState(() => _pickedImages.addAll(images));
+    }
+  }
+
+  Future<void> _takePicture() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.camera);
+    if (pickedFile != null) {
+      setState(() => _pickedImages.add(pickedFile));
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() => _pickedImages.removeAt(index));
+  }
+
+  void _removeExistingImage(int index) {
+    setState(() => _existingImageUrls.removeAt(index));
   }
 
   Future<void> _saveCar() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -111,11 +151,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
       final updatedImageUrls = List<String>.from(_existingImageUrls);
 
       for (final imageFile in _pickedImages) {
-        final imageUrl = await _carService.uploadCarMedia(
-          userId,
-          carId,
-          File(imageFile.path),
-        );
+        final imageUrl = await _carService.uploadCarMedia(userId, carId, File(imageFile.path));
         updatedImageUrls.add(imageUrl);
       }
 
@@ -125,249 +161,383 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
         make: _makeController.text.trim(),
         model: _modelController.text.trim(),
         year: int.parse(_yearController.text),
-        mileage: int.parse(_mileageController.text),
+        mileage: double.parse(_mileageController.text).toInt(),
         location: _locationController.text.trim(),
         description: _descriptionController.text.trim(),
         fuelType: _selectedFuelType,
         transmission: _selectedTransmission,
-        forSale:
-            _userRole == 'user'
-                ? true
-                : _isForSale, // Force 'true' for 'user' role
+        forSale: _isForSale,
         isPublic: true,
         isAvailable: widget.carToEdit?.isAvailable ?? true,
         createdAt: widget.carToEdit?.createdAt ?? DateTime.now(),
         mediaUrls: updatedImageUrls,
-        salePrice:
-            _isForSale ? double.tryParse(_salePriceController.text) : null,
-        bookingRatePerDay:
-            !_isForSale ? double.tryParse(_bookingRateController.text) : null,
+        salePrice: _isForSale ? double.tryParse(_salePriceController.text) : null,
+        bookingRatePerDay: !_isForSale ? double.tryParse(_bookingRateController.text) : null,
       );
 
-      widget.carToEdit == null
-          ? await _carService.createCar(carData)
-          : await _carService.updateCar(carData);
+      if (widget.carToEdit == null) {
+        await _carService.createCar(carData);
+      } else {
+        await _carService.updateCar(carData);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Car saved successfully!')),
+          SnackBar(
+            content: Text(widget.carToEdit != null ? 'Car updated successfully!' : 'Car listed successfully!'),
+          ),
         );
-        Navigator.of(context).pop(true);
+        Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted)
-        {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  String? _validateRequired(String? value, String fieldName) {
+    if (value == null || value.trim().isEmpty) {
+      return '$fieldName is required';
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-        appBar: CustomAppBar(
-          title: widget.carToEdit == null ? 'Add Car' : 'Edit Car',
-        ),
-        body:
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : Form(
-                  key: _formKey,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        TextFormField(
-                          controller: _makeController,
-                          decoration: const InputDecoration(labelText: 'Make'),
-                          validator:
-                              (v) => Validators.validateNotEmpty(v, 'Make'),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _modelController,
-                          decoration: const InputDecoration(labelText: 'Model'),
-                          validator:
-                              (v) => Validators.validateNotEmpty(v, 'Model'),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _yearController,
-                          decoration: const InputDecoration(labelText: 'Year'),
-                          keyboardType: TextInputType.number,
-                          validator:
-                              (v) => Validators.validateNotEmpty(v, 'Year'),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _mileageController,
-                          decoration: const InputDecoration(
-                            labelText: 'Mileage',
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator:
-                              (v) => Validators.validateNotEmpty(v, 'Mileage'),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _locationController,
-                          decoration: const InputDecoration(
-                            labelText: 'Location',
-                          ),
-                          validator:
-                              (v) => Validators.validateNotEmpty(v, 'Location'),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _descriptionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Description',
-                          ),
-                          maxLines: 4,
-                        ),
-                        const SizedBox(height: 24),
+    final isDriver = _userRole?.toLowerCase() == 'driver';
+    final isEditing = widget.carToEdit != null;
 
-                        // --- Conditional UI for Listing Type ---
-                        if (_userRole == 'driver' || _userRole == 'admin')
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text('For Sale'),
-                              Switch(
-                                value: !_isForSale,
-                                onChanged:
-                                    (v) => setState(() => _isForSale = !v),
-                              ),
-                              const Text('For Booking'),
-                            ],
-                          )
-                        else if (_userRole == 'user')
-                          const Card(
-                            child: ListTile(
-                              leading: Icon(Icons.info_outline),
-                              title: Text('Listing cars for sale only'),
-                              subtitle: Text(
-                                'Your account type is set to list cars for sale.',
-                              ),
-                            ),
-                          ),
-
-                        const SizedBox(height: 16),
-                        if (_isForSale)
-                          TextFormField(
-                            controller: _salePriceController,
-                            decoration: const InputDecoration(
-                              labelText: 'Sale Price (\$)',
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator:
-                                (v) => Validators.validateNotEmpty(v, 'Price'),
-                          )
-                        else
-                          TextFormField(
-                            controller: _bookingRateController,
-                            decoration: const InputDecoration(
-                              labelText: 'Booking Rate (\$/day)',
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator:
-                                (v) => Validators.validateNotEmpty(v, 'Rate'),
-                          ),
-
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<FuelType>(
-                          initialValue: _selectedFuelType,
-                          decoration: const InputDecoration(
-                            labelText: 'Fuel Type',
-                          ),
-                          items:
-                              FuelType.values
-                                  .map(
-                                    (t) => DropdownMenuItem(
-                                      value: t,
-                                      child: Text(t.name.toUpperCase()),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged:
-                              (v) => setState(() => _selectedFuelType = v!),
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<Transmission>(
-                          initialValue: _selectedTransmission,
-                          decoration: const InputDecoration(
-                            labelText: 'Transmission',
-                          ),
-                          items:
-                              Transmission.values
-                                  .map(
-                                    (t) => DropdownMenuItem(
-                                      value: t,
-                                      child: Text(t.name.toUpperCase()),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged:
-                              (v) => setState(() => _selectedTransmission = v!),
-                        ),
-                        const SizedBox(height: 24),
-
-                        OutlinedButton.icon(
-                          onPressed: _pickImages,
-                          icon: const Icon(Icons.add_a_photo_outlined),
-                          label: const Text('Add Photos'),
-                        ),
-
-                        if (_existingImageUrls.isNotEmpty ||
-                            _pickedImages.isNotEmpty)
-                          Container(
-                            height: 100,
-                            margin: const EdgeInsets.only(top: 16),
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
+    return ScaffoldWithNav(
+      title: isEditing ? 'Edit Car' : 'Add Car',
+      currentRoute: '/cars/add',
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Listing Type', style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 8),
+                            Row(
                               children: [
-                                ..._existingImageUrls.map(
-                                  (url) => Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: Image.network(
-                                      url,
-                                      width: 100,
-                                      height: 100,
-                                      fit: BoxFit.cover,
+                                const Text('For Booking'),
+                                Switch(
+                                  value: _isForSale, 
+                                  onChanged: isDriver
+                                      ? (value) {
+                                          setState(() => _isForSale = value);
+                                        }
+                                      : null, 
+                                ),
+                                const Text('For Sale'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Car Details', style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 16),
+                             Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _makeController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Make *',
+                                      hintText: 'e.g., Maruti',
                                     ),
+                                    validator: (v) => _validateRequired(v, 'Make'),
                                   ),
                                 ),
-                                ..._pickedImages.map(
-                                  (file) => Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: Image.file(
-                                      File(file.path),
-                                      width: 100,
-                                      height: 100,
-                                      fit: BoxFit.cover,
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _modelController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Model *',
+                                      hintText: 'e.g., Swift',
                                     ),
+                                    validator: (v) => _validateRequired(v, 'Model'),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: _saveCar,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16.0),
-                          ),
-                          child: const Text('Save Car'),
+                            
+                            const SizedBox(height: 16),
+                            
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _yearController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Year *',
+                                      hintText: 'e.g., 2020',
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    validator: (value) {
+                                      if (value?.isEmpty ?? true) return 'Year is required';
+                                      final year = int.tryParse(value!);
+                                      if (year == null || year < 1980 || year > DateTime.now().year + 1) {
+                                        return 'Enter a valid year';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _mileageController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Mileage (km/l) *',
+                                      hintText: 'e.g., 18.5',
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    validator: (value) {
+                                      if (value?.isEmpty ?? true) return 'Mileage is required';
+                                      final mileage = double.tryParse(value!);
+                                      if (mileage == null || mileage <= 0) {
+                                        return 'Enter a valid mileage';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<FuelType>(
+                              initialValue: _selectedFuelType,
+                              decoration: const InputDecoration(labelText: 'Fuel Type *'),
+                              items: FuelType.values
+                                  .map((type) => DropdownMenuItem(value: type, child: Text(type.name)))
+                                  .toList(),
+                              onChanged: (value) => setState(() => _selectedFuelType = value!),
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<Transmission>(
+                              initialValue: _selectedTransmission,
+                              decoration: const InputDecoration(labelText: 'Transmission *'),
+                              items: Transmission.values
+                                  .map((type) => DropdownMenuItem(value: type, child: Text(type.name)))
+                                  .toList(),
+                              onChanged: (value) => setState(() => _selectedTransmission = value!),
+                            ),
+                            const SizedBox(height: 16),
+
+                            if (_isForSale)
+                              TextFormField(
+                                controller: _salePriceController,
+                                decoration: const InputDecoration(labelText: 'Sale Price (₹) *', hintText: 'e.g., 500000'),
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (_isForSale) { 
+                                    if (value?.isEmpty ?? true) return 'Price is required';
+                                    final price = double.tryParse(value!);
+                                    if (price == null || price <= 0) return 'Enter a valid price';
+                                  }
+                                  return null;
+                                },
+                              )
+                            else
+                              TextFormField(
+                                controller: _bookingRateController,
+                                decoration: const InputDecoration(labelText: 'Booking Rate (₹/day) *', hintText: 'e.g., 2000'),
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (!_isForSale) { 
+                                    if (value?.isEmpty ?? true) return 'Rate is required';
+                                    final rate = double.tryParse(value!);
+                                    if (rate == null || rate <= 0) return 'Enter a valid rate';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _locationController,
+                              decoration: const InputDecoration(labelText: 'Location *', hintText: 'e.g., Mumbai, Maharashtra'),
+                              validator: (v) => _validateRequired(v, 'Location'),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _descriptionController,
+                              decoration: const InputDecoration(labelText: 'Description (Optional)', hintText: 'Additional details...'),
+                              maxLines: 3,
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                             Text(
+                              'Images',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 16),
+                             Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _pickImages,
+                                    icon: const Icon(Icons.photo_library),
+                                    label: const Text('Choose from Gallery'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _takePicture,
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Take Photo'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                             const SizedBox(height: 16),
+                             if (_existingImageUrls.isNotEmpty || _pickedImages.isNotEmpty)
+                              SizedBox(
+                                height: 100,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: [
+                                    ..._existingImageUrls.asMap().entries.map((entry) {
+                                      final index = entry.key;
+                                      final url = entry.value;
+                                      return Container(
+                                        margin: const EdgeInsets.only(right: 8),
+                                        child: Stack(
+                                          children: [
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.network(
+                                                url,
+                                                width: 100,
+                                                height: 100,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 4,
+                                              right: 4,
+                                              child: GestureDetector(
+                                                onTap: () => _removeExistingImage(index),
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(4),
+                                                  decoration: const BoxDecoration(
+                                                    color: Colors.red,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.close,
+                                                    color: Colors.white,
+                                                    size: 16,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                     ..._pickedImages.asMap().entries.map((entry) {
+                                      final index = entry.key;
+                                      final image = entry.value;
+                                      return Container(
+                                        margin: const EdgeInsets.only(right: 8),
+                                        child: Stack(
+                                          children: [
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.file(
+                                                File(image.path),
+                                                width: 100,
+                                                height: 100,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 4,
+                                              right: 4,
+                                              child: GestureDetector(
+                                                onTap: () => _removeImage(index),
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(4),
+                                                  decoration: const BoxDecoration(
+                                                    color: Colors.red,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.close,
+                                                    color: Colors.white,
+                                                    size: 16,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _saveCar,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                        ),
+                        child: _isLoading
+                            ? const CircularProgressIndicator()
+                            : Text(isEditing ? 'Update Car' : 'List Car'),
+                      ),
+                    ),
+                  ],
                 ),
-      );
+              ),
+            ),
+    );
   }
 }

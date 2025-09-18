@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/job_posting.dart';
 import '../../services/job_service.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 import 'job_posting_detail_page.dart';
 
 class JobPostingsListPage extends StatefulWidget {
@@ -25,8 +25,9 @@ class _JobPostingsListPageState extends State<JobPostingsListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Job Vacancies'),
+    return ScaffoldWithNav(
+      title: 'Job Vacancies',
+      currentRoute: '/jobs/postings', 
       body: FutureBuilder<List<JobPosting>>(
         future: _postingsFuture,
         builder: (context, snapshot) {
@@ -48,13 +49,20 @@ class _JobPostingsListPageState extends State<JobPostingsListPage> {
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
-                  title: Text(post.jobTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(
+                    post.jobTitle,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   subtitle: Text("${post.jobType} - ${post.location}"),
                   trailing: const Icon(Icons.arrow_forward_ios),
                   onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) => JobPostingDetailPage(posting: post),
-                    ));
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (context) =>
+                                JobPostingDetailPage(postingId: post.id),
+                      ),
+                    );
                   },
                 ),
               );

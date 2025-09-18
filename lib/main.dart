@@ -5,5 +5,5 @@ import 'app.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initSupabase();
-  runApp(const App());
+  runApp(const MyApp());
 }

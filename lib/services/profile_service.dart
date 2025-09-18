@@ -32,7 +32,6 @@ class ProfileService {
           
       return publicUrl;
     } catch (e) {
-      print('An unexpected error occurred during avatar upload: $e');
       rethrow;
     }
   }
@@ -52,7 +51,6 @@ class ProfileService {
       }
       rethrow;
     } catch (e) {
-      print('An unexpected error occurred in getProfile: $e');
       rethrow;
     }
   }
@@ -67,7 +65,6 @@ class ProfileService {
           .single();
       return UserProfile.fromMap(response);
     } catch (e) {
-      print('An unexpected error occurred in createProfile: $e');
       rethrow;
     }
   }
@@ -83,7 +80,6 @@ class ProfileService {
           .single();
       return UserProfile.fromMap(response);
     } catch (e) {
-      print('An unexpected error occurred in updateProfile: $e');
       rethrow;
     }
   }

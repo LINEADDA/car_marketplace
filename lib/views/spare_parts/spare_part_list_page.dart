@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/spare_part.dart';
 import '../../services/spare_part_service.dart';
 import '../../widgets/custom_app_bar.dart';
-import 'add_edit_spare_part_page.dart';
-import 'spare_part_detail_page.dart';
 
 class SparePartListPage extends StatefulWidget {
-  const SparePartListPage({super.key});
+  
+  final bool showMyParts;
+
+  const SparePartListPage({super.key, this.showMyParts = false});
 
   @override
   State<SparePartListPage> createState() => _SparePartListPageState();
@@ -15,7 +17,7 @@ class SparePartListPage extends StatefulWidget {
 
 class _SparePartListPageState extends State<SparePartListPage> {
   late final SparePartService _sparePartService;
-  List<SparePart> _myParts = [];
+  List<SparePart> _parts = [];
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -23,104 +25,78 @@ class _SparePartListPageState extends State<SparePartListPage> {
   void initState() {
     super.initState();
     _sparePartService = SparePartService(Supabase.instance.client);
-    _fetchMyParts();
+    _fetchParts();
   }
 
-  Future<void> _fetchMyParts() async {
+  Future<void> _fetchParts() async {
     setState(() { _isLoading = true; _errorMessage = null; });
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) {
-      setState(() { _isLoading = false; _errorMessage = 'You must be logged in.'; });
-      return;
-    }
     try {
-      final parts = await _sparePartService.getSparePartsForUser(userId);
-      if (mounted) setState(() { _myParts = parts; _isLoading = false; });
+      List<SparePart> parts;
+      final user = Supabase.instance.client.auth.currentUser;
+
+      if (widget.showMyParts && user != null) {
+        parts = await _sparePartService.getSparePartsForUser(user.id);
+      } else {
+        parts = await _sparePartService.getAllSpareParts();
+      }
+
+      if (mounted) {
+        setState(() {
+          _parts = parts;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _errorMessage = "Failed to load your parts: $e"; _isLoading = false; });
-    }
-  }
-
-  void _navigateToAddOrEditPage({SparePart? partToEdit}) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => AddEditSparePartPage(partToEdit: partToEdit))).then((result) {
-      if (result == true) _fetchMyParts();
-    });
-  }
-
-  Future<void> _handleDeletePart(SparePart part) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Part'),
-        content: Text('Are you sure you want to delete "${part.title}"? This cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        await _sparePartService.deleteSparePart(part.id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Part deleted successfully')));
-          _fetchMyParts();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting part: $e'), backgroundColor: Colors.red));
-        }
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Failed to load parts: $e";
+          _isLoading = false;
+        });
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.showMyParts ? 'My Spare Parts' : 'All Spare Parts';
+    
     return Scaffold(
-        appBar: const CustomAppBar(title: 'My Spare Parts'),
-        body: _buildBody(),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _navigateToAddOrEditPage(),
-          child: const Icon(Icons.add),
-        ),
-      );
+      appBar: CustomAppBar(title: title),
+      body: _buildBody(),
+      floatingActionButton: widget.showMyParts
+          ? FloatingActionButton(
+              onPressed: () => context.push('/spare-parts/add'),
+              child: const Icon(Icons.add),
+            )
+          : null,
+    );
   }
 
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_errorMessage != null) return Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)));
-    if (_myParts.isEmpty) return const Center(child: Text('You have not listed any parts yet.'));
-    
+    if (_parts.isEmpty) {
+      final message = widget.showMyParts ? 'You have not listed any parts yet.' : 'No spare parts are currently available.';
+      return Center(child: Text(message));
+    }
+
     return RefreshIndicator(
-      onRefresh: _fetchMyParts,
+      onRefresh: _fetchParts,
       child: ListView.builder(
-        itemCount: _myParts.length,
+        padding: const EdgeInsets.all(8.0),
+        itemCount: _parts.length,
         itemBuilder: (context, index) {
-          final part = _myParts[index];
+          final part = _parts[index];
           return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin: const EdgeInsets.symmetric(vertical: 8.0),
+            clipBehavior: Clip.antiAlias,
             child: ListTile(
               leading: part.mediaUrls.isNotEmpty
-                  ? Image.network(part.mediaUrls.first, width: 50, height: 50, fit: BoxFit.cover)
+                  ? Image.network(part.mediaUrls.first, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (c,o,s) => const Icon(Icons.build_circle_outlined, size: 40))
                   : const Icon(Icons.build_circle_outlined, size: 40),
               title: Text(part.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text('\$${part.price.toStringAsFixed(2)}'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => SparePartDetailPage(partId: part.id))),
-              trailing: PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'edit') _navigateToAddOrEditPage(partToEdit: part);
-                  if (value == 'delete') _handleDeletePart(part);
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
-                ],
-              ),
+              subtitle: Text('₹${part.price.toStringAsFixed(2)}'),
+              onTap: () => context.push('/spare-parts/${part.id}'),
             ),
           );
         },

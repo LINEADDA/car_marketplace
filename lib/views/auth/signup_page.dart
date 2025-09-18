@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../services/auth_service.dart'; 
+import '../../services/auth_service.dart';
+import '../../widgets/custom_app_bar.dart'; 
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -54,7 +55,7 @@ class _SignupPageState extends State<SignupPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Sign up successful! Please log in.")),
         );
-        context.go('/login');
+        context.push('/login');
       }
     } catch (e) {
       if (mounted) {
@@ -71,7 +72,7 @@ class _SignupPageState extends State<SignupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign Up')),
+      appBar: const CustomAppBar(title: 'Sign Up'),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -158,7 +159,7 @@ class _SignupPageState extends State<SignupPage> {
                 ),
                 const SizedBox(height: 16),
                 TextButton(
-                  onPressed: () => context.go('/login'),
+                  onPressed: () => context.push('/login'),
                   child: const Text("Already have an account? Log In"),
                 )
               ],

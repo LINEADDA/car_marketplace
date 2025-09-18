@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart'; // Import go_router
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/spare_part.dart';
 import '../../services/spare_part_service.dart';
 import '../../widgets/custom_app_bar.dart';
-import 'add_edit_spare_part_page.dart';
 
 class SparePartDetailPage extends StatefulWidget {
   final String partId;
@@ -42,9 +42,7 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
 
   void _navigateToEditPage() {
     if (_part == null) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => AddEditSparePartPage(partToEdit: _part))).then((result) {
-      if (result == true) _fetchPartDetails();
-    });
+    context.go('/spare-parts/edit/${_part!.id}');
   }
 
   Future<void> _handleDeletePart() async {
@@ -70,7 +68,8 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
         await _sparePartService.deleteSparePart(_part!.id);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Part deleted successfully')));
-          Navigator.of(context).pop(true);
+          // Use go_router to go back to the list page
+          context.go('/spare-parts');
         }
       } catch (e) {
         if (mounted) {
@@ -102,7 +101,7 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
     if (_part == null) return const Center(child: Text('Spare part not found.'));
 
     final part = _part!;
-    final currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
+    final currencyFormatter = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

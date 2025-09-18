@@ -1,27 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/skilled_worker.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart'; 
 
 class SkilledWorkerDetailPage extends StatelessWidget {
   final SkilledWorker worker;
 
   const SkilledWorkerDetailPage({super.key, required this.worker});
 
-  Future<void> _launchPhoneDialer(String phoneNumber, BuildContext context) async {
+  Future _launchPhoneDialer(String phoneNumber, BuildContext context) async {
     final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
     try {
       if (await canLaunchUrl(phoneUri)) {
         await launchUrl(phoneUri);
       } else {
-        // --- FIX: Add mounted check ---
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not launch phone dialer.')),
         );
       }
     } catch (e) {
-      // --- FIX: Add mounted check ---
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to launch dialer: $e')),
@@ -31,8 +29,9 @@ class SkilledWorkerDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(title: worker.fullName),
+    return ScaffoldWithNav(  
+      title: worker.fullName,  
+      currentRoute: '/jobs/skilled-workers/${worker.id}', 
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(

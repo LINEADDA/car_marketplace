@@ -1,16 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 import '../../models/spare_part.dart';
 import '../../services/spare_part_service.dart';
-import '../../utils/validators.dart';
-import '../../widgets/custom_app_bar.dart';
 
 class AddEditSparePartPage extends StatefulWidget {
-  final SparePart? partToEdit;
-  const AddEditSparePartPage({super.key, this.partToEdit});
+  final String? partId;
+
+  const AddEditSparePartPage({super.key, this.partId});
+
+  bool get isEditMode => partId != null;
 
   @override
   State<AddEditSparePartPage> createState() => _AddEditSparePartPageState();
@@ -19,32 +18,29 @@ class AddEditSparePartPage extends StatefulWidget {
 class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
   final _formKey = GlobalKey<FormState>();
   late final SparePartService _sparePartService;
-  final _uuid = const Uuid();
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _priceController;
+  SparePartCondition _selectedCondition = SparePartCondition.usedGood; // Default value
 
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _priceController = TextEditingController();
-
-  SparePartCondition _selectedCondition = SparePartCondition.brandNew;
-  final List<XFile> _pickedImages = [];
-  late List<String> _existingImageUrls;
+  bool _isSubmitting = false;
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _sparePartService = SparePartService(Supabase.instance.client);
-    _existingImageUrls = List<String>.from(widget.partToEdit?.mediaUrls ?? []);
+    
+    _titleController = TextEditingController();
+    _descriptionController = TextEditingController();
+    _priceController = TextEditingController();
 
-    if (widget.partToEdit != null) {
-      final part = widget.partToEdit!;
-      _titleController.text = part.title;
-      _descriptionController.text = part.description;
-      _priceController.text = part.price.toString();
-      _selectedCondition = part.condition;
+    if (widget.isEditMode) {
+      _loadPartForEditing();
     }
   }
-
+  
   @override
   void dispose() {
     _titleController.dispose();
@@ -53,89 +49,145 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
     super.dispose();
   }
 
-  Future<void> _pickImages() async {
-    final images = await ImagePicker().pickMultiImage(imageQuality: 80);
-    if (images.isNotEmpty) setState(() => _pickedImages.addAll(images));
-  }
-
-  Future<void> _savePart() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
+  Future<void> _loadPartForEditing() async {
+    setState(() { _isLoading = true; });
     try {
-      final userId = Supabase.instance.client.auth.currentUser!.id;
-      final partId = widget.partToEdit?.id ?? _uuid.v4();
-      final updatedImageUrls = List<String>.from(_existingImageUrls);
-
-      for (final imageFile in _pickedImages) {
-        final imageUrl = await _sparePartService.uploadSparePartMediaFile(userId, partId, File(imageFile.path));
-        updatedImageUrls.add(imageUrl);
-      }
-
-      final partData = SparePart(
-        id: partId,
-        ownerId: userId,
-        title: _titleController.text.trim(),
-        description: _descriptionController.text.trim(),
-        price: double.parse(_priceController.text),
-        condition: _selectedCondition,
-        createdAt: widget.partToEdit?.createdAt ?? DateTime.now(),
-        mediaUrls: updatedImageUrls,
-      );
-
-      widget.partToEdit == null
-          ? await _sparePartService.createSparePart(partData)
-          : await _sparePartService.updateSparePart(partData);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Part saved successfully!')));
-        Navigator.of(context).pop(true);
+      final part = await _sparePartService.getPartById(widget.partId!);
+      if (mounted && part != null) {
+        setState(() {
+          _titleController.text = part.title;
+          _descriptionController.text = part.description;
+          _priceController.text = part.price.toString();
+          _selectedCondition = part.condition;
+        });
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving part: $e'), backgroundColor: Colors.red));
+      if (mounted) setState(() { _errorMessage = 'Failed to load part data: $e'; });
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; });
+    }
+  }
+
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() { _isSubmitting = true; _errorMessage = null; });
+
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('You must be logged in to submit a part.');
+      }
+      
+      final partData = SparePart(
+        id: widget.partId ?? '', // ID is handled by service/db for creation
+        ownerId: currentUser.id, // Correctly using 'ownerId'
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        price: double.parse(_priceController.text.trim()),
+        condition: _selectedCondition, // Using the selected condition
+        mediaUrls: [], // Placeholder for media URLs
+        createdAt: DateTime.now(),
+      );
+
+      if (widget.isEditMode) {
+        await _sparePartService.updateSparePart(partData);
+      } else {
+        await _sparePartService.createSparePart(partData);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.isEditMode ? 'Part updated successfully' : 'Part added successfully')),
+        );
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _errorMessage = 'Failed to submit part: $e'; });
+      }
+    } finally {
+      if (mounted) {
+        setState(() { _isSubmitting = false; });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: CustomAppBar(title: widget.partToEdit == null ? 'Add Spare Part' : 'Edit Part'),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: Form(
+      appBar: AppBar(
+        title: Text(widget.isEditMode ? 'Edit Spare Part' : 'Add Spare Part'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null && !_isSubmitting
+              ? Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)))
+              : Form(
                   key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextFormField(controller: _titleController, decoration: const InputDecoration(labelText: 'Part Title'), validator: (v) => Validators.validateNotEmpty(v, 'Title')),
-                      const SizedBox(height: 16),
-                      TextFormField(controller: _priceController, decoration: const InputDecoration(labelText: 'Price (\$)', prefixIcon: Icon(Icons.attach_money)), keyboardType: TextInputType.number, validator: (v) => Validators.validateNotEmpty(v, 'Price')),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<SparePartCondition>(
-                        initialValue: _selectedCondition,
-                        decoration: const InputDecoration(labelText: 'Condition'),
-                        items: SparePartCondition.values.map((condition) {
-                          return DropdownMenuItem(value: condition, child: Text(condition.name));
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) setState(() => _selectedCondition = value);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(controller: _descriptionController, decoration: const InputDecoration(labelText: 'Description'), maxLines: 4, validator: (v) => Validators.validateNotEmpty(v, 'Description')),
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(onPressed: _pickImages, icon: const Icon(Icons.add_a_photo), label: const Text('Add Photos')),
-                      // Image display logic...
-                      const SizedBox(height: 24),
-                      ElevatedButton(onPressed: _savePart, style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16.0)), child: const Text('Save Part')),
-                    ],
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextFormField(
+                          controller: _titleController,
+                          decoration: const InputDecoration(labelText: 'Title'),
+                          validator: (value) => value == null || value.isEmpty ? 'Title cannot be empty' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<SparePartCondition>(
+                          initialValue: _selectedCondition,
+                          decoration: const InputDecoration(labelText: 'Condition'),
+                          items: SparePartCondition.values.map((condition) {
+                            return DropdownMenuItem(
+                              value: condition,
+                              child: Text(condition.name),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() { _selectedCondition = value; });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _descriptionController,
+                          decoration: const InputDecoration(labelText: 'Description'),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _priceController,
+                          decoration: const InputDecoration(labelText: 'Price'),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) return 'Price cannot be empty';
+                            if (double.tryParse(value) == null) return 'Please enter a valid number';
+                            if (double.parse(value) <= 0) return 'Price must be positive';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 32),
+                        if (_isSubmitting)
+                          const Center(child: CircularProgressIndicator())
+                        else
+                          ElevatedButton(
+                            onPressed: _submitForm,
+                            child: Text(widget.isEditMode ? 'Save Changes' : 'Add Part'),
+                          ),
+                        if (_errorMessage != null && _isSubmitting)
+                           Padding(
+                             padding: const EdgeInsets.only(top: 16.0),
+                             child: Text(_errorMessage!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                           ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-      );
+    );
   }
 }
