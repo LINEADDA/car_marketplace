@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/repair_shop.dart';
 import '../../services/repair_shop_service.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 import '../../widgets/repair_shop_card.dart';
 import 'repair_shop_detail_page.dart';
 
@@ -36,8 +36,9 @@ class _RepairShopListPageState extends State<RepairShopListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Repair Shops'),
+    return ScaffoldWithNav(
+      title: 'Repair Shops',
+      currentRoute: '/repair-shops',
       body: FutureBuilder<List<RepairShop>>(
         future: _shopsFuture,
         builder: (context, snapshot) {

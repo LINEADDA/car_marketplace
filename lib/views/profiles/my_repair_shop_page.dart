@@ -1,53 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../models/car.dart';
-import '../../services/car_service.dart';
+import '../../models/repair_shop.dart';
+import '../../services/repair_shop_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
+import '../repair_shops/add_edit_repair_shop_page.dart';
 
-class MyGaragePage extends StatefulWidget {
-  const MyGaragePage({super.key});
+class MyRepairShopPage extends StatefulWidget {
+  const MyRepairShopPage({super.key});
 
   @override
-  State<MyGaragePage> createState() => _MyGaragePageState();
+  State<MyRepairShopPage> createState() => _MyRepairShopPageState();
 }
 
-class _MyGaragePageState extends State<MyGaragePage> {
-  late final CarService _carService;
-  List<Car> _cars = [];
+class _MyRepairShopPageState extends State<MyRepairShopPage> {
+  late final RepairShopService _repairShopService;
+  late final String _currentUserId;
+  List<RepairShop> _myShops = [];
   bool _isLoading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _carService = CarService(Supabase.instance.client);
-    _loadCars();
+    _repairShopService = RepairShopService(Supabase.instance.client);
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) {
+      _error = 'User not logged in.';
+      _isLoading = false;
+    } else {
+      _currentUserId = currentUser.id;
+      _loadShops();
+    }
   }
 
-  Future<void> _loadCars() async {
+  Future<void> _loadShops() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      final cars = await _carService.getCarsByOwner();
+      final shops = await _repairShopService.getShopsByOwnerId(_currentUserId);
       if (!mounted) return;
-      setState(() => _cars = cars);
+      setState(() => _myShops = shops);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Failed to load cars: $e');
+      setState(() => _error = 'Failed to load your shops: $e');
     }
     if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
-  Future<void> _deleteCar(String id) async {
+  Future<void> _deleteShop(String id, String ownerId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Car'),
-        content: const Text('Are you sure you want to delete this car?'),
+        title: const Text('Delete Repair Shop'),
+        content: const Text('Are you sure you want to delete this shop?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -64,89 +73,82 @@ class _MyGaragePageState extends State<MyGaragePage> {
     if (!mounted) return;
     if (confirm == true) {
       try {
-        await _carService.deleteCar(id);
+        await _repairShopService.deleteRepairShop(id, ownerId);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Car deleted successfully')),
+          const SnackBar(content: Text('Shop deleted successfully')),
         );
-        _loadCars();
+        _loadShops();
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete car: $e')),
+          SnackBar(content: Text('Failed to delete shop: $e')),
         );
       }
     }
   }
 
-  void _navigateToAddEdit({Car? car}) async {
-    await context.push('/cars/add', extra: car);
-
+  void _navigateToAddEdit({RepairShop? shop}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddEditRepairShopPage(shopToEdit: shop),
+      ),
+    );
     if (!mounted) return;
-    _loadCars();
+    _loadShops();
   }
 
   @override
   Widget build(BuildContext context) {
     return ScaffoldWithNav(
-      title: 'My Garage',
-      currentRoute: '/my-garage',
+      title: 'My Shops',
+      currentRoute: '/my-repair-shops',
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
                   child: Text(_error!, style: const TextStyle(color: Colors.red)),
                 )
-              : _cars.isEmpty
+              : _myShops.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('No cars found.'),
+                          const Text('No repair shops found.'),
                           const SizedBox(height: 16),
                           ElevatedButton(
                             onPressed: () => _navigateToAddEdit(),
-                            child: const Text('Add Car'),
+                            child: const Text('Add Repair Shop'),
                           ),
                         ],
                       ),
                     )
                   : RefreshIndicator(
-                      onRefresh: _loadCars,
+                      onRefresh: _loadShops,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(8.0),
-                        itemCount: _cars.length,
+                        itemCount: _myShops.length,
                         itemBuilder: (context, index) {
-                          final car = _cars[index];
+                          final shop = _myShops[index];
                           return Card(
                             margin: const EdgeInsets.symmetric(vertical: 8.0),
                             clipBehavior: Clip.antiAlias,
                             child: ListTile(
-                              leading: car.mediaUrls.isNotEmpty
-                                  ? Image.network(
-                                      car.mediaUrls.first,
-                                      width: 50,
-                                      height: 50,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (c, o, s) =>
-                                          const Icon(Icons.directions_car, size: 40),
-                                    )
-                                  : const Icon(Icons.directions_car, size: 40),
+                              leading: const Icon(
+                                Icons.build_circle_outlined,
+                                size: 40,
+                              ),
                               title: Text(
-                                '${car.make} ${car.model} (${car.year})',
+                                shop.name,
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
-                              subtitle: Text(
-                                car.forSale
-                                    ? 'For Sale: ₹${car.salePrice?.toStringAsFixed(0)}'
-                                    : 'For Booking: ₹${car.bookingRatePerDay?.toStringAsFixed(0)}/day',
-                              ),
+                              subtitle: Text(shop.location),
                               trailing: PopupMenuButton<String>(
                                 onSelected: (value) {
                                   if (value == 'edit') {
-                                    _navigateToAddEdit(car: car);
+                                    _navigateToAddEdit(shop: shop);
                                   } else if (value == 'delete') {
-                                    _deleteCar(car.id);
+                                    _deleteShop(shop.id, shop.ownerId);
                                   }
                                 },
                                 itemBuilder: (ctx) => [
@@ -179,7 +181,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
                                   ),
                                 ],
                               ),
-                              onTap: () => context.push('/cars/${car.id}'),
+                              onTap: () => context.push('/repair-shops/${shop.id}'),
                             ),
                           );
                         },
@@ -187,7 +189,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
                     ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _navigateToAddEdit(),
-        tooltip: 'Add Car',
+        tooltip: 'Add Repair Shop',
         child: const Icon(Icons.add),
       ),
     );

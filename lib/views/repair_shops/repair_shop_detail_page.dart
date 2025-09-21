@@ -28,7 +28,6 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
   }
 
   Future<void> _fetchShopDetails() async {
-    // We don't want to start a new fetch if the widget is no longer in the tree
     if (!mounted) return;
     
     setState(() => _isLoading = true);

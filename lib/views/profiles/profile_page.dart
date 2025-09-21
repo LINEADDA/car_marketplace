@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/profile_service.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart'; 
 import '../../models/user_profile.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -37,14 +37,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(
-        title: 'My Profile',
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), tooltip: 'Sign Out', onPressed: _signOut),
-          IconButton(icon: const Icon(Icons.settings_outlined), tooltip: 'Account Settings', onPressed: () => context.push('/profile/account-settings')),
-        ],
-      ),
+    return ScaffoldWithNav(
+      title: 'My Profile',
+      currentRoute: '/profile',
+      actions: [ 
+        IconButton(icon: const Icon(Icons.logout), tooltip: 'Sign Out', onPressed: _signOut),
+        IconButton(icon: const Icon(Icons.settings_outlined), tooltip: 'Account Settings', onPressed: () => context.push('/profile/account-settings')),
+      ],
       body: FutureBuilder<UserProfile?>(
         future: _profileFuture,
         builder: (context, snapshot) {
@@ -72,8 +71,9 @@ class _ProfilePageState extends State<ProfilePage> {
               Center(child: Text(profile.role, style: Theme.of(context).textTheme.bodyMedium)),
               const SizedBox(height: 24),
               const Divider(),
-              ListTile(leading: const Icon(Icons.directions_car_outlined), title: const Text('My Garage'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-garage')),
-              ListTile(leading: const Icon(Icons.build_circle_outlined), title: const Text('My Spare Parts'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/spare-parts?show=mine')),
+              ListTile(leading: const Icon(Icons.directions_car_outlined), title: const Text('My Cars'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-garage')),
+              ListTile(leading: const Icon(Icons.build_circle_outlined), title: const Text('My Spare Parts'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-spare-parts')),
+              ListTile(leading: const Icon(Icons.build_circle_outlined), title: const Text('My Repair Shops'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-repair-shops')),
               ListTile(leading: const Icon(Icons.work_history_outlined), title: const Text('My Job Activity'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/jobs/my-activity')),
               const Divider(),
               ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Edit Profile'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/profile/edit')),

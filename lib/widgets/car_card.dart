@@ -31,7 +31,7 @@ class CarCard extends StatelessWidget {
             if (car.mediaUrls.isNotEmpty)
               Image.network(
                 car.mediaUrls.first,
-                height: 180,
+                height: 150,
                 width: double.infinity,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
@@ -71,7 +71,7 @@ class CarCard extends StatelessWidget {
   // Helper methods to keep the build method clean
   Widget _buildPlaceholderImage() {
     return Container(
-      height: 180,
+      height: 150,
       color: Colors.grey,
       child: const Center(child: Icon(Icons.directions_car_filled, size: 80, color: Colors.grey)),
     );

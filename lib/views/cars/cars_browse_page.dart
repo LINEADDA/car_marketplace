@@ -46,7 +46,6 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
     return ScaffoldWithNav(
       title: 'Cars and Rentals',
       currentRoute: '/cars/browse', 
-      showHomeIcon: true, 
       tabs: TabBar(
         controller: _tabController,
         tabs: const [Tab(text: 'For Booking'), Tab(text: 'For Sale')],

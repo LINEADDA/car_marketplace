@@ -20,9 +20,9 @@ class SparePartCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (part.mediaUrls.isNotEmpty)
-              Image.network(part.mediaUrls.first, height: 160, width: double.infinity, fit: BoxFit.cover, errorBuilder: (c, o, s) => const Icon(Icons.broken_image, size: 80))
+              Image.network(part.mediaUrls.first, height: 150, width: double.infinity, fit: BoxFit.cover, errorBuilder: (c, o, s) => const Icon(Icons.broken_image, size: 80))
             else
-              Container(height: 160, color: Colors.grey[200], child: const Center(child: Icon(Icons.build, size: 60, color: Colors.grey))),
+              Container(height: 150, color: Colors.grey[200], child: const Center(child: Icon(Icons.build, size: 60, color: Colors.grey))),
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: Column(

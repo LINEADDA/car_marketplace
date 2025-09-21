@@ -10,7 +10,7 @@ class ScaffoldWithNav extends StatelessWidget {
   final List<Widget>? actions;
   final bool showHomeIcon;
   final FloatingActionButton? floatingActionButton;
-  final PreferredSizeWidget? tabs; 
+  final PreferredSizeWidget? tabs;
 
   const ScaffoldWithNav({
     super.key,
@@ -40,7 +40,11 @@ class ScaffoldWithNav extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNav(BuildContext context, String currentRoute, bool isLoggedIn) {
+  Widget _buildBottomNav(
+    BuildContext context,
+    String currentRoute,
+    bool isLoggedIn,
+  ) {
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
       currentIndex: _getCurrentIndex(currentRoute),
@@ -48,9 +52,18 @@ class ScaffoldWithNav extends StatelessWidget {
       unselectedItemColor: Colors.grey,
       showUnselectedLabels: true,
       items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: 'Cars'),
-        BottomNavigationBarItem(icon: Icon(Icons.build_circle_outlined), label: 'Parts'),
-        BottomNavigationBarItem(icon: Icon(Icons.storefront_outlined), label: 'Shops'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.directions_car),
+          label: 'Cars',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.build_circle_outlined),
+          label: 'Parts',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.storefront_outlined),
+          label: 'Shops',
+        ),
         BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: 'Jobs'),
         BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'You'),
       ],
@@ -63,18 +76,31 @@ class ScaffoldWithNav extends StatelessWidget {
     if (route.startsWith('/spare-parts')) return 1;
     if (route.startsWith('/repair-shops')) return 2;
     if (route.startsWith('/jobs')) return 3;
-    if (route.startsWith('/profile')) return 4;
+    if (route.startsWith('/profile') ||
+        (route.startsWith('/my-garage') ||
+            route.startsWith('/my-spare-parts')) ||
+        (route.startsWith('/jobs/my-activity')) ||
+        route.startsWith('/login')) {
+      return 4;
+    }
+
     return 0;
   }
 
   void _handleNavTap(BuildContext context, int index, bool isLoggedIn) {
-    final routes = ['/cars', '/spare-parts', '/repair-shops', '/jobs', '/profile'];
-    
+    final routes = [
+      '/cars/browse',
+      '/spare-parts',
+      '/repair-shops',
+      '/jobs',
+      '/profile',
+    ];
+
     if (index == 4 && !isLoggedIn) {
       context.push('/login');
       return;
     }
-    
+
     context.go(routes[index]);
   }
 }

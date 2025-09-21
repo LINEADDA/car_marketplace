@@ -115,7 +115,7 @@ class _CarDetailPageState extends State<CarDetailPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Car deleted successfully')),
           );
-          context.go('/cars');
+          Navigator.pop(context, true);
         }
       } catch (e) {
         if (mounted) {
