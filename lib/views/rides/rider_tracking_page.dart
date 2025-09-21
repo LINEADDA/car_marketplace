@@ -20,18 +20,16 @@ class _RiderTrackingPageState extends State<RiderTrackingPage> {
   late final Stream<DriverLocation> _locationStream;
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
-  bool _myLocationEnabled = false; // 2. State variable for rider's location
+  bool _myLocationEnabled = false; 
 
   @override
   void initState() {
     super.initState();
     _locationService = LocationService(Supabase.instance.client);
     _locationStream = _locationService.getDriverLocationStream(widget.ride.id);
-    // 3. Check for permission to show rider's own location
     _enableMyLocation();
   }
   
-  /// Checks for permission and updates the UI to show the rider's own location.
   void _enableMyLocation() async {
     final bool hasPermission = await handleLocationPermission();
     if(mounted) {

@@ -16,6 +16,8 @@ class SparePart {
   final String description;
   final SparePartCondition condition;
   final double price;
+  final String contact;
+  final String location;
   final DateTime createdAt;
 
   SparePart({
@@ -26,6 +28,8 @@ class SparePart {
     required this.description,
     required this.condition,
     required this.price,
+    required this.contact,
+    required this.location,
     required this.createdAt,
   });
 
@@ -39,6 +43,8 @@ class SparePart {
       description: map['description'] as String,
       condition: SparePartCondition.values.byName(map['condition'] as String),
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      contact: map['contact'] as String,
+      location: map['location'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
@@ -53,6 +59,8 @@ class SparePart {
       'description': description,
       'condition': condition.name,
       'price': price,
+      'contact': contact,
+      'location': location,
       'created_at': createdAt.toIso8601String(),
     };
   }

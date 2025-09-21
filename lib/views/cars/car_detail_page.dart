@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
 import '../../services/config_service.dart';
-import '../../services/profile_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 
 class CarDetailPage extends StatefulWidget {
@@ -19,7 +19,6 @@ class CarDetailPage extends StatefulWidget {
 class _CarDetailPageState extends State<CarDetailPage> {
   late final CarService _carService;
   late final ConfigService _configService;
-  late final ProfileService _profileService;
 
   Car? _car;
   String? _adminContactNumber;
@@ -39,7 +38,6 @@ class _CarDetailPageState extends State<CarDetailPage> {
     super.initState();
     _carService = CarService(Supabase.instance.client);
     _configService = ConfigService(Supabase.instance.client);
-    _profileService = ProfileService(Supabase.instance.client);
     _fetchDetails();
   }
 
@@ -57,21 +55,18 @@ class _CarDetailPageState extends State<CarDetailPage> {
 
       if (car == null) throw Exception('Car not found.');
 
-      String? ownerContact;
-      if (!car.forSale) {
-        try {
-          final ownerProfile = await _profileService.getProfile(car.ownerId);
-          ownerContact = ownerProfile?.phoneNumber;
-        } catch (e) {
-          ownerContact = null;
-        }
+      String? displayedContact;
+      if (car.forSale) {
+        displayedContact = adminContact;
+      } else {
+        displayedContact = car.contact;
       }
 
       if (mounted) {
         setState(() {
           _car = car;
           _adminContactNumber = adminContact;
-          _ownerContactNumber = ownerContact;
+          _ownerContactNumber = displayedContact;
           _isLoading = false;
         });
       }
@@ -130,6 +125,37 @@ class _CarDetailPageState extends State<CarDetailPage> {
     }
   }
 
+  Future<void> _launchDialer(String number) async {
+    final Uri launchUri = Uri(scheme: 'tel', path: number);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch dialer.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _launchMap(String location) async {
+    // A more reliable way to search for a location on a map.
+    // The query parameter `q` is used for a text-based search.
+    final Uri launchUri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': location,
+    });
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not open map.')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScaffoldWithNav(
@@ -178,6 +204,9 @@ class _CarDetailPageState extends State<CarDetailPage> {
       symbol: '₹',
     );
 
+    final String? contactNumber =
+        car.forSale ? _adminContactNumber : _ownerContactNumber;
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,7 +239,6 @@ class _CarDetailPageState extends State<CarDetailPage> {
                 ),
               ),
             ),
-
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -219,8 +247,8 @@ class _CarDetailPageState extends State<CarDetailPage> {
                 Text(
                   _carTitle,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 _buildPriceDisplay(car, currencyFormatter),
@@ -231,7 +259,7 @@ class _CarDetailPageState extends State<CarDetailPage> {
                   children: [
                     _buildSpecChip(
                       Icons.speed_outlined,
-                      '${mileageFormatter.format(car.mileage)} mi',
+                      '${mileageFormatter.format(car.mileage)} Km/L',
                     ),
                     _buildSpecChip(
                       Icons.local_gas_station_outlined,
@@ -256,47 +284,37 @@ class _CarDetailPageState extends State<CarDetailPage> {
                   ),
                 ),
                 ListTile(
+                  onTap: () => _launchMap(car.location),
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.location_on_outlined),
                   title: const Text('Location'),
-                  subtitle: Text(car.location),
-                ),
-                const SizedBox(height: 24),
-
-                Card(
-                  elevation: 2,
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Interested in this vehicle?',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 8),
-                        // CONDITIONAL TEXT BASED ON CAR TYPE
-                        Text(
-                          car.forSale
-                              ? 'To arrange a viewing or make a purchase, please contact our main office at the number below.'
-                              : 'To arrange a booking or rental, please contact the car owner directly at the number below.',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: SelectableText(
-                            car.forSale
-                                ? (_adminContactNumber ?? 'N/A')
-                                : (_ownerContactNumber ?? 'N/A'),
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
+                  subtitle: Text(
+                    car.location,
+                    style: const TextStyle(
+                      decoration: TextDecoration.underline,
                     ),
                   ),
                 ),
+                ListTile(
+                  onTap: () {
+                    if (contactNumber != null) {
+                      _launchDialer(contactNumber);
+                    }
+                  },
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.phone_outlined),
+                  title: const Text('Contact'),
+                  subtitle: Text(
+                    contactNumber ?? 'Not available',
+                    style: TextStyle(
+                      decoration: contactNumber != null
+                          ? TextDecoration.underline
+                          : TextDecoration.none,
+                      color: contactNumber != null ? Theme.of(context).colorScheme.primary : Colors.grey,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -310,24 +328,24 @@ class _CarDetailPageState extends State<CarDetailPage> {
       return Text(
         currencyFormatter.format(car.salePrice),
         style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          fontWeight: FontWeight.bold,
-        ),
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
       );
     } else if (!car.forSale && car.bookingRatePerDay != null) {
       return RichText(
         text: TextSpan(
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
           children: [
             TextSpan(text: currencyFormatter.format(car.bookingRatePerDay)),
             TextSpan(
               text: ' / day',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.secondary,
-              ),
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
             ),
           ],
         ),

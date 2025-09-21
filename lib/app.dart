@@ -19,6 +19,7 @@ import 'views/jobs/job_postings_list_page.dart';
 import 'views/jobs/skilled_workers_list_page.dart';
 import 'views/jobs/job_posting_detail_page.dart';
 import 'views/jobs/add_edit_job_posting_page.dart';
+import 'views/repair_shops/repair_shop_detail_page.dart';
 import 'views/repair_shops/repair_shop_list_page.dart';
 import 'views/spare_parts/spare_part_detail_page.dart';
 import 'views/spare_parts/spare_part_list_page.dart';
@@ -94,6 +95,12 @@ class MyApp extends StatelessWidget {
             builder: (context, state) => const RepairShopListPage(),
           ),
           GoRoute(
+            path: '/repair-shops/:id',
+            builder:
+                (context, state) =>
+                    RepairShopDetailPage(shopId: state.pathParameters['id']!),
+          ),
+          GoRoute(
             path: '/jobs',
             builder: (context, state) => const JobListingTypePage(),
           ),
@@ -142,7 +149,7 @@ class MyApp extends StatelessWidget {
             builder: (context, state) => const MyRepairShopPage(),
           ),
           GoRoute(
-            path: '/jobs/my-activity',
+            path: '/jobs/my-hiring-activity',
             builder: (context, state) => const MyJobsPage(),
           ),
         ],

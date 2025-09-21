@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/spare_part.dart';
 import '../../services/spare_part_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
@@ -60,22 +61,24 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
     if (_part == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Delete Part'),
-            content: Text('Are you sure you want to delete "${_part!.title}"?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Delete'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Part'),
+        content: Text('Are you sure you want to delete "${_part!.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
 
     if (confirmed == true) {
@@ -85,14 +88,46 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Part deleted successfully')),
           );
-          context.push('/spare-parts');
+          context.go('/spare-parts');
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+            SnackBar(
+                content: Text('Error: $e'), backgroundColor: Colors.redAccent),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _launchDialer(String number) async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: number,
+    );
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch dialer.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _launchMap(String location) async {
+    final Uri launchUri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': location,
+    });
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Could not open map.')));
       }
     }
   }
@@ -119,7 +154,6 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
           ),
         ],
       ],
-
       body: _buildBody(),
     );
   }
@@ -128,11 +162,13 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_errorMessage != null) {
       return Center(
-        child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+        child: Text(_errorMessage!,
+            style: const TextStyle(color: Colors.red, fontSize: 16)),
       );
     }
     if (_part == null) {
-      return const Center(child: Text('Spare part not found.'));
+      return const Center(
+          child: Text('Spare part not found.', style: TextStyle(fontSize: 16)));
     }
 
     final part = _part!;
@@ -149,14 +185,14 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
               height: 250,
               child: PageView.builder(
                 itemCount: part.mediaUrls.length,
-                itemBuilder:
-                    (context, index) => Image.network(
-                      part.mediaUrls[index],
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (c, o, s) =>
-                              const Icon(Icons.broken_image, size: 100),
-                    ),
+                itemBuilder: (context, index) {
+                  return Image.network(
+                    part.mediaUrls[index],
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) =>
+                        const Icon(Icons.broken_image, size: 100),
+                  );
+                },
               ),
             )
           else
@@ -165,7 +201,7 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
               color: Colors.grey[300],
               child: const Center(
                 child: Icon(
-                  Icons.build_circle_outlined,
+                  Icons.directions_car,
                   size: 100,
                   color: Colors.grey,
                 ),
@@ -179,32 +215,74 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
                 Text(
                   part.title,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  currencyFormatter.format(part.price),
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                _buildPriceDisplay(part, currencyFormatter),
+                const SizedBox(height: 16),
+                _buildSpecChip(
+                    Icons.sell_outlined, part.condition.name.toUpperCase()),
                 const SizedBox(height: 16),
                 const Divider(),
-                _buildSectionTitle('Condition'),
-                Chip(
-                  label: Text(part.condition.name),
-                  backgroundColor: Colors.blueGrey[50],
+                // Displaying Location
+                ListTile(
+                  onTap: () {
+                    if (part.location.isNotEmpty == true) {
+                      _launchMap(part.location);
+                    }
+                  },
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.location_on_outlined),
+                  title: const Text('Location'),
+                  subtitle: Text(
+                    part.location.isNotEmpty == true
+                        ? part.location
+                        : 'Not specified',
+                    style: TextStyle(
+                      decoration: part.location.isNotEmpty == true
+                          ? TextDecoration.underline
+                          : TextDecoration.none,
+                      color: part.location.isNotEmpty == true
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 16),
-                _buildSectionTitle('Description'),
-                Text(
-                  part.description.isNotEmpty
-                      ? part.description
-                      : 'No description provided.',
-                  style: Theme.of(context).textTheme.bodyLarge,
+                // Displaying Contact
+                ListTile(
+                  onTap: () {
+                    if (part.contact.isNotEmpty) {
+                      _launchDialer(part.contact);
+                    }
+                  },
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.phone_outlined),
+                  title: const Text('Contact'),
+                  subtitle: Text(
+                    part.contact.isNotEmpty ? part.contact : 'Not available',
+                    style: TextStyle(
+                      decoration: part.contact.isNotEmpty
+                          ? TextDecoration.underline
+                          : TextDecoration.none,
+                      color: part.contact.isNotEmpty
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey,
+                    ),
+                  ),
                 ),
+                // Displaying Description
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Description'),
+                  subtitle: Text(
+                    part.description.isNotEmpty
+                        ? part.description
+                        : 'No description provided.',
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -213,10 +291,21 @@ class _SparePartDetailPageState extends State<SparePartDetailPage> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+  Widget _buildPriceDisplay(SparePart part, NumberFormat currencyFormatter) {
+    return Text(
+      currencyFormatter.format(part.price),
+      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
+    );
+  }
+
+  Widget _buildSpecChip(IconData icon, String label) {
+    return Chip(
+      avatar: Icon(icon, size: 20),
+      label: Text(label),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
     );
   }
 }

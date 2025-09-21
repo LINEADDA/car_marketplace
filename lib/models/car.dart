@@ -5,7 +5,6 @@ enum FuelType { petrol, diesel, electric, hybrid, cng, other }
 enum Transmission { automatic, manual, other }
 
 class Car {
-  // Properties ordered exactly as in the database schema
   final String id;
   final List<String> mediaUrls;
   final String ownerId;
@@ -22,6 +21,7 @@ class Car {
   final Transmission transmission;
   final double? salePrice;
   final double? bookingRatePerDay;
+  final String contact;
   final DateTime createdAt;
 
   Car({
@@ -41,8 +41,9 @@ class Car {
     required this.transmission,
     this.salePrice,
     this.bookingRatePerDay,
+    String? contact,
     required this.createdAt,
-  });
+  }): contact = contact ?? '00000';
 
   factory Car.fromMap(Map<String, dynamic> map) {
     return Car(
@@ -62,6 +63,7 @@ class Car {
       transmission: Transmission.values.byName(map['transmission'] as String),
       salePrice: (map['sale_price'] as num?)?.toDouble(),
       bookingRatePerDay: (map['booking_rate_per_day'] as num?)?.toDouble(),
+      contact: map['contact'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
@@ -84,6 +86,7 @@ class Car {
       'transmission': transmission.name,
       'sale_price': salePrice,
       'booking_rate_per_day': bookingRatePerDay,
+      'contact': contact,
       'created_at': createdAt.toIso8601String(),
     };
   }

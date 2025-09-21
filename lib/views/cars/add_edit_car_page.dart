@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,6 +25,7 @@ class AddEditCarPage extends StatefulWidget {
   State<AddEditCarPage> createState() => _AddEditCarPageState();
 }
 
+// _buildTextFormField
 class _AddEditCarPageState extends State<AddEditCarPage> {
   final _formKey = GlobalKey<FormState>();
   late final CarService _carService;
@@ -34,6 +36,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   final _yearController = TextEditingController();
   final _mileageController = TextEditingController();
   final _locationController = TextEditingController();
+  final _contactController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _salePriceController = TextEditingController();
   final _bookingRateController = TextEditingController();
@@ -99,7 +102,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
       if (mounted) {
         setState(() {
           _userRole = null;
-          _isForSale = true; 
+          _isForSale = true;
         });
       }
       return;
@@ -117,9 +120,9 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
         setState(() {
           _userRole = role;
           if (role == 'driver') {
-            _isForSale = false; 
+            _isForSale = false;
           } else {
-            _isForSale = true; 
+            _isForSale = true;
           }
         });
       }
@@ -135,6 +138,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     _yearController.text = car.year.toString();
     _mileageController.text = car.mileage.toString();
     _locationController.text = car.location;
+    _contactController.text = car.contact;
     _descriptionController.text = car.description;
     _salePriceController.text = car.salePrice?.toString() ?? '';
     _bookingRateController.text = car.bookingRatePerDay?.toString() ?? '';
@@ -149,6 +153,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     _yearController.text = car.year.toString();
     _mileageController.text = car.mileage.toString();
     _locationController.text = car.location;
+    _contactController.text = car.contact;
     _descriptionController.text = car.description;
     _salePriceController.text = car.salePrice?.toString() ?? '';
     _bookingRateController.text = car.bookingRatePerDay?.toString() ?? '';
@@ -164,6 +169,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     _yearController.dispose();
     _mileageController.dispose();
     _locationController.dispose();
+    _contactController.dispose();
     _descriptionController.dispose();
     _salePriceController.dispose();
     _bookingRateController.dispose();
@@ -220,6 +226,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
         year: int.parse(_yearController.text),
         mileage: double.parse(_mileageController.text).toInt(),
         location: _locationController.text.trim(),
+        contact: _contactController.text.trim(),
         description: _descriptionController.text.trim(),
         fuelType: _selectedFuelType,
         transmission: _selectedTransmission,
@@ -277,6 +284,10 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     final isDriver = _userRole?.toLowerCase() == 'driver';
     final isEditing = widget.carToEdit != null;
 
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return ScaffoldWithNav(
       title: isEditing ? 'Edit Car' : 'Add Car',
       currentRoute: '/cars/add',
@@ -290,379 +301,281 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      _buildSectionCard(
+                        context,
+                        title: 'Listing Type',
+                        children: [
+                          _buildListingTypeToggle(
+                            context,
+                            isDriver: isDriver,
+                            isForSale: _isForSale,
+                            onChanged:
+                                (value) => setState(() => _isForSale = value),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSectionCard(
+                        context,
+                        title: 'Car Details',
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                'Listing Type',
-                                style: Theme.of(context).textTheme.titleMedium,
+                              Expanded(
+                                child: _buildTextFormField(
+                                  controller: _makeController,
+                                  labelText: 'Make *',
+                                  hintText: 'e.g., Maruti',
+                                  validator:
+                                      (v) => _validateRequired(v, 'Make'),
+                                ),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  const Text('For Booking'),
-                                  Switch(
-                                    value: _isForSale,
-                                    onChanged:
-                                        isDriver
-                                            ? (value) {
-                                              setState(
-                                                () => _isForSale = value,
-                                              );
-                                            }
-                                            : null,
-                                  ),
-                                  const Text('For Sale'),
-                                ],
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextFormField(
+                                  controller: _modelController,
+                                  labelText: 'Model *',
+                                  hintText: 'e.g., Swift',
+                                  validator:
+                                      (v) => _validateRequired(v, 'Model'),
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: 16),
+                          Row(
                             children: [
-                              Text(
-                                'Car Details',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _makeController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Make *',
-                                        hintText: 'e.g., Maruti',
-                                      ),
-                                      validator:
-                                          (v) => _validateRequired(v, 'Make'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _modelController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Model *',
-                                        hintText: 'e.g., Swift',
-                                      ),
-                                      validator:
-                                          (v) => _validateRequired(v, 'Model'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _yearController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Year *',
-                                        hintText: 'e.g., 2020',
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                      validator: (value) {
-                                        if (value?.isEmpty ?? true) {
-                                          return 'Year is required';
-                                        }
-                                        final year = int.tryParse(value!);
-                                        if (year == null ||
-                                            year < 1980 ||
-                                            year > DateTime.now().year + 1) {
-                                          return 'Enter a valid year';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _mileageController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Mileage (km/l) *',
-                                        hintText: 'e.g., 18.5',
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                      validator: (value) {
-                                        if (value?.isEmpty ?? true) {
-                                          return 'Mileage is required';
-                                        }
-                                        final mileage = double.tryParse(value!);
-                                        if (mileage == null || mileage <= 0) {
-                                          return 'Enter a valid mileage';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              DropdownButtonFormField<FuelType>(
-                                initialValue: _selectedFuelType,
-                                decoration: const InputDecoration(
-                                  labelText: 'Fuel Type *',
-                                ),
-                                items:
-                                    FuelType.values
-                                        .map(
-                                          (type) => DropdownMenuItem(
-                                            value: type,
-                                            child: Text(type.name),
-                                          ),
-                                        )
-                                        .toList(),
-                                onChanged:
-                                    (value) => setState(
-                                      () => _selectedFuelType = value!,
-                                    ),
-                              ),
-                              const SizedBox(height: 16),
-                              DropdownButtonFormField<Transmission>(
-                                initialValue: _selectedTransmission,
-                                decoration: const InputDecoration(
-                                  labelText: 'Transmission *',
-                                ),
-                                items:
-                                    Transmission.values
-                                        .map(
-                                          (type) => DropdownMenuItem(
-                                            value: type,
-                                            child: Text(type.name),
-                                          ),
-                                        )
-                                        .toList(),
-                                onChanged:
-                                    (value) => setState(
-                                      () => _selectedTransmission = value!,
-                                    ),
-                              ),
-                              const SizedBox(height: 16),
-
-                              if (_isForSale)
-                                TextFormField(
-                                  controller: _salePriceController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Sale Price (₹) *',
-                                    hintText: 'e.g., 500000',
-                                  ),
+                              Expanded(
+                                child: _buildTextFormField(
+                                  controller: _yearController,
+                                  labelText: 'Year *',
+                                  hintText: 'e.g., 2020',
                                   keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
                                   validator: (value) {
-                                    if (_isForSale) {
-                                      if (value?.isEmpty ?? true) {
-                                        return 'Price is required';
-                                      }
-                                      final price = double.tryParse(value!);
-                                      if (price == null || price <= 0) {
-                                        return 'Enter a valid price';
-                                      }
+                                    if (value?.isEmpty ?? true) {
+                                      return 'Year is required';
                                     }
-                                    return null;
-                                  },
-                                )
-                              else
-                                TextFormField(
-                                  controller: _bookingRateController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Booking Rate (₹/day) *',
-                                    hintText: 'e.g., 2000',
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  validator: (value) {
-                                    if (!_isForSale) {
-                                      if (value?.isEmpty ?? true) {
-                                        return 'Rate is required';
-                                      }
-                                      final rate = double.tryParse(value!);
-                                      if (rate == null || rate <= 0) {
-                                        return 'Enter a valid rate';
-                                      }
+                                    final year = int.tryParse(value!);
+                                    if (year == null ||
+                                        year < 1980 ||
+                                        year > DateTime.now().year + 1) {
+                                      return 'Enter a valid year';
                                     }
                                     return null;
                                   },
                                 ),
-
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _locationController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Location *',
-                                  hintText: 'e.g., Mumbai, Maharashtra',
-                                ),
-                                validator:
-                                    (v) => _validateRequired(v, 'Location'),
                               ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _descriptionController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Description (Optional)',
-                                  hintText: 'Additional details...',
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextFormField(
+                                  controller: _mileageController,
+                                  labelText: 'Mileage (km/l) *',
+                                  hintText: 'e.g., 18.5',
+                                  keyboardType: TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d+\.?\d*'),
+                                    ),
+                                  ],
+                                  validator: (value) {
+                                    if (value?.isEmpty ?? true) {
+                                      return 'Mileage is required';
+                                    }
+                                    final mileage = double.tryParse(value!);
+                                    if (mileage == null || mileage <= 0) {
+                                      return 'Enter a valid mileage';
+                                    }
+                                    return null;
+                                  },
                                 ),
-                                maxLines: 3,
                               ),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          _buildDropdownFormField<FuelType>(
+                            initialValue: _selectedFuelType,
+                            labelText: 'Fuel Type *',
+                            items:
+                                FuelType.values
+                                    .map(
+                                      (type) => DropdownMenuItem(
+                                        value: type,
+                                        child: Text(type.name),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) =>
+                                    setState(() => _selectedFuelType = value!),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDropdownFormField<Transmission>(
+                            initialValue: _selectedTransmission,
+                            labelText: 'Transmission *',
+                            items:
+                                Transmission.values
+                                    .map(
+                                      (type) => DropdownMenuItem(
+                                        value: type,
+                                        child: Text(type.name),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) => setState(
+                                  () => _selectedTransmission = value!,
+                                ),
+                          ),
+                          const SizedBox(height: 16),
+                          if (_isForSale)
+                            _buildTextFormField(
+                              controller: _salePriceController,
+                              labelText: 'Sale Price (₹) *',
+                              hintText: 'e.g., 500000',
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              validator: (value) {
+                                if (_isForSale) {
+                                  if (value?.isEmpty ?? true) {
+                                    return 'Price is required';
+                                  }
+                                  final price = double.tryParse(value!);
+                                  if (price == null || price <= 0) {
+                                    return 'Enter a valid price';
+                                  }
+                                }
+                                return null;
+                              },
+                            )
+                          else
+                            _buildTextFormField(
+                              controller: _bookingRateController,
+                              labelText: 'Booking Rate (₹/Hour) *',
+                              hintText: 'e.g., 2000',
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              validator: (value) {
+                                if (!_isForSale) {
+                                  if (value?.isEmpty ?? true) {
+                                    return 'Rate is required';
+                                  }
+                                  final rate = double.tryParse(value!);
+                                  if (rate == null || rate <= 0) {
+                                    return 'Enter a valid rate';
+                                  }
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                          _buildTextFormField(
+                            controller: _contactController,
+                            labelText: 'Contact *',
+                            hintText: 'e.g., 9876543210',
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            validator: (v) => _validateRequired(v, 'Contact'),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextFormField(
+                            controller: _locationController,
+                            labelText: 'Location *',
+                            hintText: 'e.g., Mumbai, Maharashtra',
+                            validator: (v) => _validateRequired(v, 'Location'),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextFormField(
+                            controller: _descriptionController,
+                            labelText: 'Description (Optional)',
+                            hintText: 'Additional details...',
+                            maxLines: 3,
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      _buildSectionCard(
+                        context,
+                        title: 'Images',
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                'Images',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _pickImages,
-                                      icon: const Icon(Icons.photo_library),
-                                      label: const Text('Choose from Gallery'),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _pickImages,
+                                  icon: const Icon(Icons.photo_library),
+                                  label: const Text('Choose from Gallery'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16.0,
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _takePicture,
-                                      icon: const Icon(Icons.camera_alt),
-                                      label: const Text('Take Photo'),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              if (_existingImageUrls.isNotEmpty ||
-                                  _pickedImages.isNotEmpty)
-                                SizedBox(
-                                  height: 100,
-                                  child: ListView(
-                                    scrollDirection: Axis.horizontal,
-                                    children: [
-                                      ..._existingImageUrls.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final index = entry.key;
-                                        final url = entry.value;
-                                        return Container(
-                                          margin: const EdgeInsets.only(
-                                            right: 8,
-                                          ),
-                                          child: Stack(
-                                            children: [
-                                              ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                child: Image.network(
-                                                  url,
-                                                  width: 100,
-                                                  height: 100,
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              ),
-                                              Positioned(
-                                                top: 4,
-                                                right: 4,
-                                                child: GestureDetector(
-                                                  onTap:
-                                                      () =>
-                                                          _removeExistingImage(
-                                                            index,
-                                                          ),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(4),
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          color: Colors.red,
-                                                          shape:
-                                                              BoxShape.circle,
-                                                        ),
-                                                    child: const Icon(
-                                                      Icons.close,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }),
-                                      ..._pickedImages.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final index = entry.key;
-                                        final image = entry.value;
-                                        return Container(
-                                          margin: const EdgeInsets.only(
-                                            right: 8,
-                                          ),
-                                          child: Stack(
-                                            children: [
-                                              ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                child: Image.file(
-                                                  File(image.path),
-                                                  width: 100,
-                                                  height: 100,
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              ),
-                                              Positioned(
-                                                top: 4,
-                                                right: 4,
-                                                child: GestureDetector(
-                                                  onTap:
-                                                      () => _removeImage(index),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(4),
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          color: Colors.red,
-                                                          shape:
-                                                              BoxShape.circle,
-                                                        ),
-                                                    child: const Icon(
-                                                      Icons.close,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }),
-                                    ],
                                   ),
                                 ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _takePicture,
+                                  icon: const Icon(Icons.camera_alt),
+                                  label: const Text('Take Photo'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16.0,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          if (_existingImageUrls.isNotEmpty ||
+                              _pickedImages.isNotEmpty)
+                            SizedBox(
+                              height: 100,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                children: [
+                                  ..._existingImageUrls.asMap().entries.map((
+                                    entry,
+                                  ) {
+                                    final index = entry.key;
+                                    final url = entry.value;
+                                    return _buildImageThumbnail(
+                                      imageProvider: NetworkImage(url),
+                                      onRemove:
+                                          () => _removeExistingImage(index),
+                                    );
+                                  }),
+                                  ..._pickedImages.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final image = entry.value;
+                                    return _buildImageThumbnail(
+                                      imageProvider: FileImage(
+                                        File(image.path),
+                                      ),
+                                      onRemove: () => _removeImage(index),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       SizedBox(
@@ -671,17 +584,269 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                           onPressed: _isLoading ? null : _saveCar,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            backgroundColor: colorScheme.primary,
+                            foregroundColor: colorScheme.onPrimary,
+                            elevation: 8,
                           ),
                           child:
                               _isLoading
-                                  ? const CircularProgressIndicator()
-                                  : Text(isEditing ? 'Update Car' : 'Save Car'),
+                                  ? const SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                  : Text(
+                                    isEditing ? 'Update Car' : 'Save Car',
+                                    style: textTheme.titleMedium?.copyWith(
+                                      color: colorScheme.onPrimary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+    );
+  }
+
+  Widget _buildSectionCard(
+    BuildContext context, {
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListingTypeToggle(
+    BuildContext context, {
+    required bool isDriver,
+    required bool isForSale,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.withAlpha(25),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap:
+                  isDriver
+                      ? () {
+                        if (isForSale) onChanged(false);
+                      }
+                      : null,
+              child: Container(
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: !isForSale ? colorScheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'For Booking',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color:
+                            !isForSale
+                                ? colorScheme.onPrimary
+                                : colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    if (!isDriver)
+                      Text(
+                        'Only drivers can list cars for bookings',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 15,
+                          color:
+                              !isForSale
+                                  ? colorScheme.onPrimary
+                                  : colorScheme.onSurface.withValues(
+                                    alpha: 0.5,
+                                  ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap:
+                  isDriver
+                      ? () {
+                        if (!isForSale) onChanged(true);
+                      }
+                      : null,
+              child: Container(
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: isForSale ? colorScheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'For Sale',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color:
+                        isForSale
+                            ? colorScheme.onPrimary
+                            : colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextFormField({
+    required TextEditingController controller,
+    required String labelText,
+    String? hintText,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      inputFormatters: inputFormatters,
+      decoration: InputDecoration(
+        labelText: labelText,
+        hintText: hintText,
+        filled: true,
+        fillColor: Colors.grey.withAlpha(25),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 2,
+          ),
+        ),
+      ),
+      validator: validator,
+    );
+  }
+
+  Widget _buildDropdownFormField<T>({
+    required T initialValue,
+    required String labelText,
+    required List<DropdownMenuItem<T>> items,
+    required void Function(T?) onChanged,
+  }) {
+    return DropdownButtonFormField<T>(
+      initialValue: initialValue,
+      decoration: InputDecoration(
+        labelText: labelText,
+        filled: true,
+        fillColor: Colors.grey.withAlpha(25),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 2,
+          ),
+        ),
+      ),
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildImageThumbnail({
+    required ImageProvider imageProvider,
+    required VoidCallback onRemove,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(right: 12),
+      width: 100,
+      height: 100,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image(
+              image: imageProvider,
+              width: 100,
+              height: 100,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade600,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(50),
+                      blurRadius: 2,
+                      offset: const Offset(1, 1),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

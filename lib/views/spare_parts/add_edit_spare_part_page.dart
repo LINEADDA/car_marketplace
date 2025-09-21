@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -23,6 +24,9 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _priceController;
+  late final TextEditingController _contactController;
+  late final TextEditingController _locationController;
+
   SparePartCondition _selectedCondition = SparePartCondition.usedGood;
 
   bool _isSubmitting = false;
@@ -36,6 +40,8 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
     _titleController = TextEditingController();
     _descriptionController = TextEditingController();
     _priceController = TextEditingController();
+    _contactController = TextEditingController();
+    _locationController = TextEditingController();
 
     if (widget.isEditMode) {
       _loadPartForEditing();
@@ -47,6 +53,8 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
     _titleController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
+    _contactController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -62,6 +70,8 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
           _titleController.text = part.title;
           _descriptionController.text = part.description;
           _priceController.text = part.price.toString();
+          _contactController.text = part.contact.toString();
+          _locationController.text = part.location;
           _selectedCondition = part.condition;
         });
       }
@@ -75,7 +85,12 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
   }
 
   Future<void> _submitForm() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please correct the errors in the form.')),
+      );
+      return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -88,10 +103,7 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
         throw Exception('You must be logged in to submit a part.');
       }
 
-      final id =
-          widget.isEditMode
-              ? widget.partId!
-              : Uuid().v4(); 
+      final id = widget.isEditMode ? widget.partId! : const Uuid().v4();
 
       final partData = SparePart(
         id: id,
@@ -101,6 +113,8 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
         price: double.parse(_priceController.text.trim()),
         condition: _selectedCondition,
         mediaUrls: [],
+        contact: _contactController.text.trim(),
+        location: _locationController.text.trim(),
         createdAt: DateTime.now(),
       );
 
@@ -147,24 +161,38 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
               : Form(
                 key: _formKey,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Title Field with validation
                       TextFormField(
                         controller: _titleController,
-                        decoration: const InputDecoration(labelText: 'Title'),
-                        validator:
-                            (value) =>
-                                value == null || value.isEmpty
-                                    ? 'Title cannot be empty'
-                                    : null,
+                        decoration: InputDecoration(
+                          labelText: 'Part name *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Part name cannot be empty';
+                          }
+                          return null;
+                        },
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 24),
                       DropdownButtonFormField<SparePartCondition>(
                         initialValue: _selectedCondition,
-                        decoration: const InputDecoration(
-                          labelText: 'Condition',
+                        decoration: InputDecoration(
+                          labelText: 'Condition *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
                         ),
                         items:
                             SparePartCondition.values
@@ -181,23 +209,23 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
                           }
                         },
                       ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
-                        ),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 24),
+                      // Price Field with validation
                       TextFormField(
                         controller: _priceController,
-                        decoration: const InputDecoration(labelText: 'Price'),
+                        decoration: InputDecoration(
+                          labelText: 'Price *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
+                          if (value == null || value.trim().isEmpty) {
                             return 'Price cannot be empty';
                           }
                           if (double.tryParse(value) == null) {
@@ -209,14 +237,87 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 24),
+                      // Contact Field with validation
+                      TextFormField(
+                        controller: _contactController,
+                        decoration: InputDecoration(
+                          labelText: 'Contact *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        keyboardType: TextInputType.phone,
+                        maxLines: 1,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Contact cannot be empty';
+                          }
+                          if (value.length < 10) {
+                            return 'Contact must be at least 10 digits';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Location Field with validation
+                      TextFormField(
+                        controller: _locationController,
+                        decoration: InputDecoration(
+                          labelText: 'Location *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Location cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Description Field without a validator
+                      TextFormField(
+                        controller: _descriptionController,
+                        decoration: InputDecoration(
+                          labelText: 'Description (Optional)',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        maxLines: 5,
+                      ),
+                      const SizedBox(height: 40),
                       if (_isSubmitting)
                         const Center(child: CircularProgressIndicator())
                       else
                         ElevatedButton(
                           onPressed: _submitForm,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 4,
+                          ),
                           child: Text(
                             widget.isEditMode ? 'Save Changes' : 'Add Part',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       if (_errorMessage != null && _isSubmitting)
