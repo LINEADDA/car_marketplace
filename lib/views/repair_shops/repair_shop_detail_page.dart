@@ -124,6 +124,13 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
     }
   }
 
+  // void _navigateToServiceDetail({service? service}) async {
+  //   await context.push('/service-detail', extra: service);
+
+  //   if (!mounted) return;
+  //   _fetchShopDetails();
+  // }
+
   @override
   Widget build(BuildContext context) {
     return ScaffoldWithNav(
@@ -139,7 +146,7 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                   .push(
                     MaterialPageRoute(
                       builder:
-                          (context) => AddEditRepairShopPage(shopToEdit: _shop),
+                          (context) => AddEditRepairShopPage(shopId: _shop!.id),
                     ),
                   )
                   .then((_) => _fetchShopDetails());
@@ -269,6 +276,7 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                     itemCount: shop.services.length,
                     itemBuilder: (context, index) {
                       final service = shop.services[index];
+                      final serviceId = service.id;
                       return ListTile(
                         title: Text(
                           service.price != null
@@ -280,7 +288,7 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                             MaterialPageRoute(
                               builder:
                                   (context) =>
-                                      ServiceDetailPage(service: service),
+                                      ServiceDetailPage(serviceId: serviceId),
                             ),
                           );
                         },

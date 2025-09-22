@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/repair_shop.dart';
 import '../../services/repair_shop_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
-import '../repair_shops/add_edit_repair_shop_page.dart';
 
 class MyRepairShopPage extends StatefulWidget {
   const MyRepairShopPage({super.key});
@@ -90,11 +89,7 @@ class _MyRepairShopPageState extends State<MyRepairShopPage> {
   }
 
   void _navigateToAddEdit({RepairShop? shop}) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AddEditRepairShopPage(shopToEdit: shop),
-      ),
-    );
+    await context.push('/repair-shop/add', extra: shop);
     if (!mounted) return;
     _loadShops();
   }

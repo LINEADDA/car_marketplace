@@ -19,8 +19,10 @@ import 'views/jobs/job_postings_list_page.dart';
 import 'views/jobs/skilled_workers_list_page.dart';
 import 'views/jobs/job_posting_detail_page.dart';
 import 'views/jobs/add_edit_job_posting_page.dart';
+import 'views/repair_shops/add_edit_repair_shop_page.dart';
 import 'views/repair_shops/repair_shop_detail_page.dart';
 import 'views/repair_shops/repair_shop_list_page.dart';
+import 'views/repair_shops/service_detail_page.dart';
 import 'views/spare_parts/spare_part_detail_page.dart';
 import 'views/spare_parts/spare_part_list_page.dart';
 import 'views/spare_parts/add_edit_spare_part_page.dart';
@@ -48,6 +50,7 @@ class MyApp extends StatelessWidget {
             builder: (context, state) => const SignupPage(),
           ),
           GoRoute(path: '/', builder: (context, state) => const HomePage()),
+          //////////////////////////////////////////////////////////////////////////////////////
           GoRoute(
             path: '/cars/browse',
             builder: (context, state) => const CarsBrowsePage(),
@@ -69,6 +72,7 @@ class MyApp extends StatelessWidget {
                 (context, state) =>
                     AddEditCarPage(carId: state.pathParameters['id']!),
           ),
+          //////////////////////////////////////////////////////////////////////////////////////
           GoRoute(
             path: '/spare-parts',
             builder: (context, state) => const SparePartListPage(),
@@ -90,9 +94,14 @@ class MyApp extends StatelessWidget {
               return AddEditSparePartPage(partId: id);
             },
           ),
+          ////////////////////////////////////////////////////////////////////////////////////// 
           GoRoute(
             path: '/repair-shops',
             builder: (context, state) => const RepairShopListPage(),
+          ),
+          GoRoute(
+            path: '/repair-shop/add',
+            builder: (context, state) => const AddEditRepairShopPage(),
           ),
           GoRoute(
             path: '/repair-shops/:id',
@@ -101,16 +110,26 @@ class MyApp extends StatelessWidget {
                     RepairShopDetailPage(shopId: state.pathParameters['id']!),
           ),
           GoRoute(
+            path: '/repair-shops/edit/:id',
+            builder:
+                (context, state) =>
+                    AddEditRepairShopPage(shopId: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/service-detail',
+            builder: (context, state){
+              final service = state.pathParameters['id']!;
+              return ServiceDetailPage(serviceId: service);
+            },
+          ),
+          //////////////////////////////////////////////////////////////////////////////////////
+          GoRoute(
             path: '/jobs',
             builder: (context, state) => const JobListingTypePage(),
           ),
           GoRoute(
             path: '/jobs/postings',
             builder: (context, state) => const JobPostingsListPage(),
-          ),
-          GoRoute(
-            path: '/jobs/skilled-workers',
-            builder: (context, state) => const SkilledWorkersListPage(),
           ),
           GoRoute(
             path: '/jobs/postings/:id',
@@ -123,7 +142,11 @@ class MyApp extends StatelessWidget {
             path: '/jobs/postings/add',
             builder: (context, state) => const AddEditJobPostingPage(),
           ),
-          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+          GoRoute(
+            path: '/jobs/skilled-workers',
+            builder: (context, state) => const SkilledWorkersListPage(),
+          ),
+          //////////////////////////////////////////////////////////////////////////////////////
           GoRoute(
             path: '/profile',
             builder: (context, state) => const ProfilePage(),

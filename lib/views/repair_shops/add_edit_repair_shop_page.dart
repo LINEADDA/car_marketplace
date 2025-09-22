@@ -7,12 +7,11 @@ import 'package:uuid/uuid.dart';
 import '../../models/repair_shop.dart';
 import '../../services/repair_shop_service.dart';
 import '../../utils/validators.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 
 class AddEditRepairShopPage extends StatefulWidget {
-  final RepairShop? shopToEdit;
-
-  const AddEditRepairShopPage({super.key, this.shopToEdit});
+  final String? shopId;
+  const AddEditRepairShopPage({super.key, this.shopId});
 
   @override
   State<AddEditRepairShopPage> createState() => _AddEditRepairShopPageState();
@@ -23,30 +22,54 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
   late final RepairShopService _repairShopService;
   final _uuid = const Uuid();
 
+  RepairShop? _shopToEdit;
+
   final _nameController = TextEditingController();
   final _pricingController = TextEditingController();
   final _locationController = TextEditingController();
   final _contactController = TextEditingController();
 
   List<ShopService> _services = [];
-  final List<XFile> _pickedImages = []; 
-  late List<String> _existingImageUrls; 
-  bool _isLoading = false;
+  final List<XFile> _pickedImages = [];
+  late List<String> _existingImageUrls;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _repairShopService = RepairShopService(Supabase.instance.client);
-    _existingImageUrls = List<String>.from(widget.shopToEdit?.mediaUrls ?? []);
-    _services = List<ShopService>.from(widget.shopToEdit?.services ?? []);
+    _existingImageUrls = [];
+    _services = [];
+    _loadShopData();
+  }
 
-    if (widget.shopToEdit != null) {
-      final shop = widget.shopToEdit!;
-      _nameController.text = shop.name;
-      _pricingController.text = shop.pricingInfo;
-      _locationController.text = shop.location;
-      _contactController.text = shop.contactNumber;
+  Future<void> _loadShopData() async {
+    if (widget.shopId != null) {
+      try {
+        final shop = await _repairShopService.getRepairShopById(widget.shopId!);
+        setState(() {
+          _shopToEdit = shop;
+          _nameController.text = shop.name;
+          _pricingController.text = shop.pricingInfo;
+          _locationController.text = shop.location;
+          _contactController.text = shop.contactNumber;
+          _existingImageUrls = List<String>.from(shop.mediaUrls);
+          _services = List<ShopService>.from(shop.services);
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error loading shop data: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   @override
@@ -72,7 +95,9 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
     final serviceFormKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: serviceToEdit?.name);
     final descCtrl = TextEditingController(text: serviceToEdit?.description);
-    final priceCtrl = TextEditingController(text: serviceToEdit?.price?.toString() ?? '');
+    final priceCtrl = TextEditingController(
+      text: serviceToEdit?.price?.toString() ?? '',
+    );
 
     final result = await showDialog<ShopService>(
       context: context,
@@ -89,18 +114,23 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
                     controller: nameCtrl,
                     decoration: InputDecoration(
                       labelText: 'Service Name *',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       filled: true,
                       fillColor: Colors.grey[50],
                     ),
-                    validator: (v) => Validators.validateNotEmpty(v, 'Service Name'),
+                    validator:
+                        (v) => Validators.validateNotEmpty(v, 'Service Name'),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: descCtrl,
                     decoration: InputDecoration(
                       labelText: 'Description (Optional)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       filled: true,
                       fillColor: Colors.grey[50],
                     ),
@@ -111,13 +141,17 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
                     controller: priceCtrl,
                     decoration: InputDecoration(
                       labelText: 'Price (Optional)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       filled: true,
                       fillColor: Colors.grey[50],
                     ),
                     keyboardType: TextInputType.number,
                     validator: (value) {
-                      if (value != null && value.isNotEmpty && double.tryParse(value) == null) {
+                      if (value != null &&
+                          value.isNotEmpty &&
+                          double.tryParse(value) == null) {
                         return 'Please enter a valid number';
                       }
                       return null;
@@ -130,7 +164,10 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel', style: TextStyle(color: Colors.redAccent)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.redAccent),
+              ),
             ),
             ElevatedButton(
               onPressed: () {
@@ -179,9 +216,10 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
 
-      if (widget.shopToEdit == null) {
-        // --- CREATE NEW SHOP ---
+      if (_shopToEdit == null) {
+        final newShopId = _uuid.v4();
         final newShopData = {
+          'id': newShopId,
           'owner_id': userId,
           'name': _nameController.text.trim(),
           'pricing_info': _pricingController.text.trim(),
@@ -190,23 +228,30 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
           'media_urls': <String>[],
           'services': _services.map((s) => s.toMap()).toList(),
         };
-        final createdShop = await _repairShopService.createRepairShop(newShopData);
-        final newShopId = createdShop['id'] as String;
+        await _repairShopService.createRepairShop(newShopData);
 
         if (_pickedImages.isNotEmpty) {
           final imageUrls = <String>[];
           for (final imageFile in _pickedImages) {
-            final imageUrl = await _repairShopService.uploadShopMediaFile(userId, newShopId, File(imageFile.path));
+            final imageUrl = await _repairShopService.uploadShopMediaFile(
+              userId,
+              newShopId,
+              File(imageFile.path),
+            );
             imageUrls.add(imageUrl);
           }
           await _repairShopService.updateShopMedia(newShopId, imageUrls);
         }
       } else {
-        final shop = widget.shopToEdit!;
+        final shop = _shopToEdit!;
         final updatedImageUrls = List<String>.from(_existingImageUrls);
 
         for (final imageFile in _pickedImages) {
-          final imageUrl = await _repairShopService.uploadShopMediaFile(userId, shop.id, File(imageFile.path));
+          final imageUrl = await _repairShopService.uploadShopMediaFile(
+            userId,
+            shop.id,
+            File(imageFile.path),
+          );
           updatedImageUrls.add(imageUrl);
         }
 
@@ -225,12 +270,19 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shop saved successfully!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Shop saved successfully!')),
+        );
         Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving shop: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving shop: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -239,197 +291,265 @@ class _AddEditRepairShopPageState extends State<AddEditRepairShopPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(title: widget.shopToEdit == null ? 'Add Shop' : 'Edit Shop'),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Section: Basic Shop Fields
-                    const Text('Shop Details', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Shop Name *',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.grey[50],
+    return ScaffoldWithNav(
+      title: _shopToEdit == null ? 'Add Shop' : 'Edit Shop',
+      currentRoute: '/repair-shop/add',
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Shop Details',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      validator: (v) => Validators.validateNotEmpty(v, 'Shop Name'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _locationController,
-                      decoration: InputDecoration(
-                        labelText: 'Location *',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.grey[50],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Shop Name *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        validator:
+                            (v) => Validators.validateNotEmpty(v, 'Shop Name'),
                       ),
-                      validator: (v) => Validators.validateNotEmpty(v, 'Location'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _contactController,
-                      decoration: InputDecoration(
-                        labelText: 'Contact Number *',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.grey[50],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _locationController,
+                        decoration: InputDecoration(
+                          labelText: 'Location *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        validator:
+                            (v) => Validators.validateNotEmpty(v, 'Location'),
                       ),
-                      keyboardType: TextInputType.phone,
-                      validator: Validators.validatePhoneNumber,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _pricingController,
-                      decoration: InputDecoration(
-                        labelText: 'General Pricing Info (Optional)',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.grey[50],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _contactController,
+                        decoration: InputDecoration(
+                          labelText: 'Contact Number *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        keyboardType: TextInputType.phone,
+                        validator: Validators.validatePhoneNumber,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                       ),
-                      maxLines: 3,
-                    ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _pricingController,
+                        decoration: InputDecoration(
+                          labelText: 'General Pricing Info (Optional)',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        maxLines: 3,
+                      ),
 
-                    const SizedBox(height: 32),
-                    // Section: Image Upload
-                    const Text('Shop Photos', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _pickImages,
-                      icon: const Icon(Icons.add_a_photo_outlined),
-                      label: const Text('Add Shop Photos'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[50],
-                        foregroundColor: Colors.black87,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 32),
+                      // Section: Image Upload
+                      const Text(
+                        'Shop Photos',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        elevation: 0,
                       ),
-                    ),
-                    if (_existingImageUrls.isNotEmpty || _pickedImages.isNotEmpty)
-                      Container(
-                        height: 100,
-                        margin: const EdgeInsets.only(top: 16),
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            ..._existingImageUrls.map(
-                              (url) => Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.network(
-                                    url,
-                                    width: 100,
-                                    height: 100,
-                                    fit: BoxFit.cover,
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _pickImages,
+                        icon: const Icon(Icons.add_a_photo_outlined),
+                        label: const Text('Add Shop Photos'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueGrey[50],
+                          foregroundColor: Colors.black87,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          elevation: 0,
+                        ),
+                      ),
+                      if (_existingImageUrls.isNotEmpty ||
+                          _pickedImages.isNotEmpty)
+                        Container(
+                          height: 100,
+                          margin: const EdgeInsets.only(top: 16),
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              ..._existingImageUrls.map(
+                                (url) => Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      url,
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            ..._pickedImages.map(
-                              (file) => Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.file(
-                                    File(file.path),
-                                    width: 100,
-                                    height: 100,
-                                    fit: BoxFit.cover,
+                              ..._pickedImages.map(
+                                (file) => Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.file(
+                                      File(file.path),
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(height: 32),
+                      // Section: Services Management
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Services',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
-                          ],
-                        ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.add_circle,
+                              color: Colors.blueAccent,
+                            ),
+                            onPressed: () => _showServiceDialog(),
+                          ),
+                        ],
                       ),
-                    
-                    const SizedBox(height: 32),
-                    // Section: Services Management
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Services', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle, color: Colors.blueAccent),
-                          onPressed: () => _showServiceDialog(),
+                      const SizedBox(height: 16),
+                      if (_services.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
+                          child: Text(
+                            'No services added yet. Tap the + icon to add one.',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _services.length,
+                          itemBuilder: (context, index) {
+                            final service = _services[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: ListTile(
+                                title: Text(
+                                  service.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle:
+                                    service.price != null
+                                        ? Text(
+                                          '₹${service.price}',
+                                          style: const TextStyle(
+                                            color: Colors.red,
+                                          ),
+                                        )
+                                        : null,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        color: Colors.blueAccent,
+                                      ),
+                                      onPressed:
+                                          () => _showServiceDialog(
+                                            serviceToEdit: service,
+                                          ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.redAccent,
+                                      ),
+                                      onPressed:
+                                          () => setState(
+                                            () => _services.removeAt(index),
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (_services.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16.0),
+
+                      const SizedBox(height: 40),
+                      ElevatedButton(
+                        onPressed: _saveShop,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 4,
+                        ),
                         child: Text(
-                          'No services added yet. Tap the + icon to add one.',
-                          style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                          _shopToEdit == null ? 'Save Shop' : 'Update Shop',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      )
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _services.length,
-                        itemBuilder: (context, index) {
-                          final service = _services[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: ListTile(
-                              title: Text(service.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: service.price != null ? Text('\$${service.price}', style: const TextStyle(color: Colors.green)) : null,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent),
-                                    onPressed: () => _showServiceDialog(serviceToEdit: service),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                    onPressed: () => setState(() => _services.removeAt(index)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
                       ),
-                    
-                    const SizedBox(height: 40),
-                    ElevatedButton(
-                      onPressed: _saveShop,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).primaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 4,
-                      ),
-                      child: Text(
-                        widget.shopToEdit == null ? 'Save Shop' : 'Update Shop',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
     );
   }
 }

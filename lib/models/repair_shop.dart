@@ -10,8 +10,7 @@ class RepairShop {
   final String contactNumber;
   final List<String> mediaUrls;
   final DateTime createdAt;
-  final List<ShopService> services; // Changed to List<ShopService>
-
+  final List<ShopService> services; 
   RepairShop({
     required this.id,
     required this.ownerId,
@@ -21,7 +20,7 @@ class RepairShop {
     required this.contactNumber,
     required this.mediaUrls,
     required this.createdAt,
-    this.services = const [], // Default to empty list of ShopService
+    this.services = const [], 
   });
 
   factory RepairShop.fromMap(Map<String, dynamic> map) {
@@ -58,13 +57,12 @@ class RepairShop {
   }
 }
 
-// Define the nested ShopService model
 class ShopService {
-  final String id; // A local UUID for identifying services within the list
+  final String id; 
   final String name;
   final String description;
   final double? price;
-  final List<String> mediaUrls; // New: media for individual services
+  final List<String> mediaUrls; 
 
   ShopService({
     required this.id,
@@ -94,14 +92,12 @@ class ShopService {
     };
   }
 
-  // Helper for unique ID generation (optional, can be done when creating)
   ShopService.create({
     required this.name,
     required this.description,
     this.price,
     this.mediaUrls = const [],
-  }) : id = Uuid().v4(); // Make sure you have 'package:uuid/uuid.dart' imported and Uuid() initialized
-
+  }) : id = Uuid().v4(); 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -111,7 +107,7 @@ class ShopService {
           name == other.name &&
           description == other.description &&
           price == other.price &&
-          const ListEquality().equals(mediaUrls, other.mediaUrls); // Deep equality check
+          const ListEquality().equals(mediaUrls, other.mediaUrls); 
 
   @override
   int get hashCode =>
