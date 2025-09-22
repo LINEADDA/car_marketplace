@@ -67,6 +67,14 @@ class JobService {
         .toList();
   }
 
+  /// **Add this delete method:**
+  Future<void> deleteJobPosting(String id) async {
+    await _client
+        .from('job_postings')
+        .delete()
+        .eq('id', id);
+  }
+
   // --- Skilled Workers Methods ---
   Future<List<SkilledWorker>> getSkilledWorkers() async {
     final response = await _client
@@ -117,5 +125,13 @@ class JobService {
     return (response as List)
         .map((item) => SkilledWorker.fromMap(item))
         .toList();
+  }
+
+  /// **Add this delete method:**
+  Future<void> deleteSkilledWorker(String id) async {
+    await _client
+        .from('skilled_workers')
+        .delete()
+        .eq('id', id);
   }
 }
