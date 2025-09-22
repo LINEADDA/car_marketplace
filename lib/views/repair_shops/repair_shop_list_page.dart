@@ -16,6 +16,7 @@ class RepairShopListPage extends StatefulWidget {
 class _RepairShopListPageState extends State<RepairShopListPage> {
   late final RepairShopService _repairShopService;
   late Future<List<RepairShop>> _shopsFuture;
+  final String? currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
   @override
   void initState() {
@@ -93,22 +94,31 @@ class _RepairShopListPageState extends State<RepairShopListPage> {
             );
           }
 
+          final myShops =
+              shops.where((shop) => shop.ownerId == currentUserId).toList();
+          final otherShops =
+              shops.where((shop) => shop.ownerId != currentUserId).toList();
+          final sortedShops = [...myShops, ...otherShops];
+
           return RefreshIndicator(
             onRefresh: () async => _refreshShopList(),
             child: ListView.builder(
               padding: const EdgeInsets.all(16.0),
-              itemCount: shops.length,
+              itemCount: sortedShops.length,
               itemBuilder: (context, index) {
-                final shop = shops[index];
+                final shop = sortedShops[index];
+                final isMyShop = shop.ownerId == currentUserId;
                 final theme = Theme.of(context);
 
                 return Card(
-                  elevation: 2,
+                  elevation: isMyShop ? 6 : 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16.0),
                   ),
                   margin: const EdgeInsets.only(bottom: 16),
-                  color: theme.cardColor,
+                  color: isMyShop
+                      ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+                      : theme.cardColor,
                   child: InkWell(
                     onTap: () {
                       Navigator.of(context).push(

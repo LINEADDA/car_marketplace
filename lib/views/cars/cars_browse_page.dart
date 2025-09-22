@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart'; 
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
@@ -15,10 +15,12 @@ class CarsBrowsePage extends StatefulWidget {
 
 class _CarsBrowsePageState extends State<CarsBrowsePage>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  late final TabController _tabController;
   late final CarService _carService;
+
   late Future<List<Car>> _carsForSaleFuture;
   late Future<List<Car>> _carsForBookingFuture;
+
   final String? currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
   @override
@@ -42,38 +44,30 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
     super.dispose();
   }
 
-  // New function to launch the dialer
+  /// Launch phone dialer
   Future<void> _launchDialer(String number) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: number,
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: number);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not launch dialer.')),
-        );
-      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not launch dialer.')));
     }
   }
 
-  // New function to launch a map with a location search
+  /// Launch Google Maps location search
   Future<void> _launchMap(String location) async {
-    final Uri launchUri = Uri.https(
-      'www.google.com',
-      '/maps/search/',
-      {'api': '1', 'query': location},
-    );
+    final Uri launchUri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': location,
+    });
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open map.')),
-        );
-      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open map.')));
     }
   }
 
@@ -117,6 +111,7 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
           );
         }
 
+        // Put current user's cars first
         final myCars =
             allCars.where((car) => car.ownerId == currentUserId).toList();
         final otherCars =
@@ -124,9 +119,7 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
         final sortedCars = [...myCars, ...otherCars];
 
         return RefreshIndicator(
-          onRefresh: () async {
-            setState(() => _loadCars());
-          },
+          onRefresh: () async => _loadCars(),
           child: ListView.builder(
             padding: const EdgeInsets.all(16.0),
             itemCount: sortedCars.length,
@@ -144,8 +137,8 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
                 color:
                     isMyCar
                         ? theme.colorScheme.primaryContainer.withValues(
-                              alpha: 0.5,
-                            )
+                          alpha: 0.5,
+                        )
                         : theme.cardColor,
                 child: InkWell(
                   onTap: () => context.push('/cars/${car.id}'),
@@ -170,19 +163,18 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              const SizedBox(height: 4),
-                              _buildInfoChip(
-                                Icons.currency_rupee_rounded,
-                                car.forSale
-                                    ? car.salePrice?.toStringAsFixed(0) ?? '0'
-                                    : '${car.bookingRatePerDay?.toStringAsFixed(0) ?? '0'}/Hr',
-                                onTap: null, 
-                              ),
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 4,
                                 children: [
+                                  _buildInfoChip(
+                                    Icons.currency_rupee_rounded,
+                                    car.forSale
+                                        ? car.salePrice?.toStringAsFixed(0) ??
+                                            '0'
+                                        : '${car.bookingRatePerDay?.toStringAsFixed(0) ?? '0'}/Hr',
+                                  ),
                                   _buildInfoChip(
                                     Icons.location_on_outlined,
                                     car.location,
@@ -195,10 +187,6 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
                                   ),
                                 ],
                               ),
-                              if (isMyCar) ...[
-                                const SizedBox(height: 8),
-                                _buildMyCarTag(context),
-                              ],
                             ],
                           ),
                         ),
@@ -229,71 +217,51 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
         child:
             imageUrl != null && imageUrl.isNotEmpty
                 ? Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (context, error, stackTrace) => const Icon(
-                          Icons.directions_car,
-                          size: 40,
-                          color: Colors.grey,
-                        ),
-                  )
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder:
+                      (context, error, stackTrace) => const Icon(
+                        Icons.directions_car,
+                        size: 40,
+                        color: Colors.grey,
+                      ),
+                )
                 : const Icon(
-                    Icons.directions_car,
-                    size: 40,
-                    color: Colors.grey,
-                  ),
+                  Icons.directions_car,
+                  size: 40,
+                  color: Colors.grey,
+                ),
       ),
     );
   }
 
   Widget _buildInfoChip(IconData icon, String label, {VoidCallback? onTap}) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary,
+          color: theme.colorScheme.primary,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: Theme.of(context).colorScheme.onPrimary,
-            ),
+            Icon(icon, size: 16, color: theme.colorScheme.onPrimary),
             const SizedBox(width: 4),
             Flexible(
               child: Text(
                 label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildMyCarTag(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        'My Car',
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onPrimary,
-              fontWeight: FontWeight.bold,
-            ),
       ),
     );
   }
