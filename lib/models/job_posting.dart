@@ -9,6 +9,7 @@ class JobPosting {
   final String? jobDescription;
   final String location;
   final String contactNumber;
+  final String salary;
   final bool isActive;
   final DateTime createdAt;
 
@@ -21,6 +22,7 @@ class JobPosting {
     this.jobDescription,
     required this.location,
     required this.contactNumber,
+    required this.salary,
     required this.isActive,
     required this.createdAt,
   });
@@ -35,6 +37,7 @@ class JobPosting {
       'job_description': jobDescription,
       'location': location,
       'contact_number': contactNumber,
+      'salary' : salary,
       'is_active': isActive,
       'created_at': createdAt.toIso8601String(),
     };
@@ -50,6 +53,7 @@ class JobPosting {
       jobDescription: map['job_description'] as String?,
       location: map['location'] as String,
       contactNumber: map['contact_number'] as String,
+      salary: map['salary'] as String,
       isActive: map['is_active'] as bool,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
@@ -59,8 +63,6 @@ class JobPosting {
 
   factory JobPosting.fromJson(String source) => JobPosting.fromMap(json.decode(source));
 
-  // Helper method to create a modified copy of a JobPosting instance.
-  // This is crucial for updating the state immutably in the UI.
   JobPosting copyWith({
     String? id,
     String? ownerId,
@@ -70,6 +72,7 @@ class JobPosting {
     String? jobDescription,
     String? location,
     String? contactNumber,
+    String? salary,
     bool? isActive,
     DateTime? createdAt,
   }) {
@@ -82,6 +85,7 @@ class JobPosting {
       jobDescription: jobDescription ?? this.jobDescription,
       location: location ?? this.location,
       contactNumber: contactNumber ?? this.contactNumber,
+      salary: salary ?? this.salary,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
     );

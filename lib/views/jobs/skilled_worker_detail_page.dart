@@ -9,7 +9,8 @@ class SkilledWorkerDetailPage extends StatefulWidget {
   const SkilledWorkerDetailPage({super.key, required this.workerId});
 
   @override
-  State<SkilledWorkerDetailPage> createState() => _SkilledWorkerDetailPageState();
+  State<SkilledWorkerDetailPage> createState() =>
+      _SkilledWorkerDetailPageState();
 }
 
 class _SkilledWorkerDetailPageState extends State<SkilledWorkerDetailPage> {
@@ -33,7 +34,9 @@ class _SkilledWorkerDetailPageState extends State<SkilledWorkerDetailPage> {
     });
 
     try {
-      final worker = await _skilledWorkerService.getSkilledWorkerById(widget.workerId);
+      final worker = await _skilledWorkerService.getSkilledWorkerById(
+        widget.workerId,
+      );
       if (worker == null) {
         throw Exception('Worker not found.');
       }
@@ -53,7 +56,25 @@ class _SkilledWorkerDetailPageState extends State<SkilledWorkerDetailPage> {
     }
   }
 
-  Future<void> _launchPhoneDialer(String phoneNumber, BuildContext context) async {
+  Future<void> _launchMap(String location) async {
+    final Uri mapUri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': location,
+    });
+    if (await canLaunchUrl(mapUri)) {
+      await launchUrl(mapUri);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open map.')));
+    }
+  }
+
+  Future<void> _launchPhoneDialer(
+    String phoneNumber,
+    BuildContext context,
+  ) async {
     final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
     try {
       if (await canLaunchUrl(phoneUri)) {
@@ -66,9 +87,9 @@ class _SkilledWorkerDetailPageState extends State<SkilledWorkerDetailPage> {
       }
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to launch dialer: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to launch dialer: $e')));
     }
   }
 
@@ -103,14 +124,19 @@ class _SkilledWorkerDetailPageState extends State<SkilledWorkerDetailPage> {
         children: [
           Text(
             _worker!.fullName,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
           Text(
             _worker!.primarySkill,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Theme.of(context).colorScheme.primary),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
-          if (_worker!.experienceHeadline != null && _worker!.experienceHeadline!.isNotEmpty)
+          if (_worker!.experienceHeadline != null &&
+              _worker!.experienceHeadline!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8.0),
               child: Text(
@@ -121,28 +147,55 @@ class _SkilledWorkerDetailPageState extends State<SkilledWorkerDetailPage> {
           const SizedBox(height: 16),
           const Divider(),
           const SizedBox(height: 16),
+          // Location
           ListTile(
+            contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.location_on_outlined),
             title: const Text('Location'),
-            subtitle: Text(_worker!.location),
-          ),
-          ListTile(
-            leading: const Icon(Icons.phone_outlined),
-            title: const Text('Contact Number'),
-            subtitle: Text(_worker!.contactNumber),
-            onTap: () => _launchPhoneDialer(_worker!.contactNumber, context),
-          ),
-          const SizedBox(height: 24),
-          Center(
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.call_outlined),
-              label: const Text('Call Now'),
-              onPressed: () => _launchPhoneDialer(_worker!.contactNumber, context),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                textStyle: Theme.of(context).textTheme.titleMedium,
+            subtitle: Text(
+              _worker!.location.isNotEmpty
+                  ? _worker!.location
+                  : 'Not specified',
+              style: TextStyle(
+                decoration:
+                    _worker!.location.isNotEmpty
+                        ? TextDecoration.underline
+                        : TextDecoration.none,
+                color:
+                    _worker!.location.isNotEmpty
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey,
               ),
             ),
+            onTap:
+                _worker!.location.isNotEmpty
+                    ? () => _launchMap(_worker!.location)
+                    : null,
+          ),
+          // Contact
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.phone_outlined),
+            title: const Text('Contact Number'),
+            subtitle: Text(
+              _worker!.contactNumber.isNotEmpty
+                  ? _worker!.contactNumber
+                  : 'Not available',
+              style: TextStyle(
+                decoration:
+                    _worker!.contactNumber.isNotEmpty
+                        ? TextDecoration.underline
+                        : TextDecoration.none,
+                color:
+                    _worker!.contactNumber.isNotEmpty
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey,
+              ),
+            ),
+            onTap:
+                _worker!.contactNumber.isNotEmpty
+                    ? () => _launchPhoneDialer(_worker!.contactNumber, context)
+                    : null,
           ),
         ],
       ),
@@ -157,11 +210,12 @@ class SkilledWorkerService {
 
   Future<SkilledWorker?> getSkilledWorkerById(String workerId) async {
     try {
-      final response = await _supabaseClient
-          .from('skilled_workers')
-          .select()
-          .eq('id', workerId)
-          .single();
+      final response =
+          await _supabaseClient
+              .from('skilled_workers')
+              .select()
+              .eq('id', workerId)
+              .single();
       return SkilledWorker.fromMap(response);
     } catch (e) {
       debugPrint('Error fetching skilled worker: $e');

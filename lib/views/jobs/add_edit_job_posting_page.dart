@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -21,12 +22,15 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
   final _formKey = GlobalKey<FormState>();
   late final JobService _jobService;
   bool _isLoading = false;
+  bool _isSubmitting = false;
+  String? _errorMessage;
 
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   final _jobTypeController = TextEditingController();
   final _contactController = TextEditingController();
+  final _salaryController = TextEditingController();
 
   @override
   void initState() {
@@ -44,6 +48,7 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
     _locationController.dispose();
     _jobTypeController.dispose();
     _contactController.dispose();
+    _salaryController.dispose();
     super.dispose();
   }
 
@@ -58,6 +63,7 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
           _descriptionController.text = post.jobDescription ?? '';
           _locationController.text = post.location;
           _contactController.text = post.contactNumber;
+          _salaryController.text = post.salary;
         });
       }
     } finally {
@@ -66,8 +72,16 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
   }
 
   Future<void> _savePosting() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please correct the errors in the form.')),
+      );
+      return;
+    }
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
 
     try {
       final ownerId = Supabase.instance.client.auth.currentUser!.id;
@@ -79,6 +93,7 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
         jobDescription: _descriptionController.text.trim(),
         location: _locationController.text.trim(),
         contactNumber: _contactController.text.trim(),
+        salary: _salaryController.text.trim(),
         isActive: true,
         createdAt: DateTime.now(),
       );
@@ -90,14 +105,31 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Job posting saved!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.isEditMode ? 'Job posting updated!' : 'Job posting added!',
+            ),
+          ),
+        );
         context.pop();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      setState(() {
+        _errorMessage = 'Failed to save posting: $e';
+      });
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      filled: true,
+      fillColor: Colors.grey[50],
+    );
   }
 
   @override
@@ -105,27 +137,137 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
     return ScaffoldWithNav(
       title: widget.isEditMode ? 'Edit Job Posting' : 'Add Job Posting',
       currentRoute: '/jobs/postings/add',
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16.0),
-                children: [
-                  TextFormField(controller: _titleController, decoration: const InputDecoration(labelText: 'Job Title'), validator: (v) => v!.isEmpty ? 'Title is required' : null),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _jobTypeController, decoration: const InputDecoration(labelText: 'Job Type (e.g., Full-time, Contract)'), validator: (v) => v!.isEmpty ? 'Job Type is required' : null),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _locationController, decoration: const InputDecoration(labelText: 'Location'), validator: (v) => v!.isEmpty ? 'Location is required' : null),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _contactController, decoration: const InputDecoration(labelText: 'Contact Phone Number'), keyboardType: TextInputType.phone, validator: (v) => v!.isEmpty ? 'Contact is required' : null),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _descriptionController, decoration: const InputDecoration(labelText: 'Job Description'), maxLines: 5),
-                  const SizedBox(height: 32),
-                  ElevatedButton(onPressed: _savePosting, child: const Text('Save Posting')),
-                ],
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Job Title with required *
+                      TextFormField(
+                        controller: _titleController,
+                        decoration: _inputDecoration('Job Title *'),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Job Title cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Job Type with required *
+                      TextFormField(
+                        controller: _jobTypeController,
+                        decoration: _inputDecoration(
+                          'Job Type (e.g., Full-time, Contract) *',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Job Type cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // salary with numeric only and min length validation
+                      TextFormField(
+                        controller: _salaryController,
+                        decoration: _inputDecoration('Salary per Month *'),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        maxLines: 1,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Salary cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Location with required *
+                      TextFormField(
+                        controller: _locationController,
+                        decoration: _inputDecoration('Location *'),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Location cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Contact with numeric only and min length validation
+                      TextFormField(
+                        controller: _contactController,
+                        decoration: _inputDecoration('Contact Phone Number *'),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        maxLines: 1,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Contact cannot be empty';
+                          }
+                          if (value.trim().length < 10) {
+                            return 'Contact must be at least 10 digits';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Description optional, max 5 lines
+                      TextFormField(
+                        controller: _descriptionController,
+                        decoration: _inputDecoration(
+                          'Job Description (Optional)',
+                        ),
+                        maxLines: 5,
+                      ),
+                      const SizedBox(height: 40),
+                      if (_isSubmitting)
+                        const Center(child: CircularProgressIndicator())
+                      else
+                        ElevatedButton(
+                          onPressed: _savePosting,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 4,
+                          ),
+                          child: Text(
+                            widget.isEditMode
+                                ? 'Save Changes'
+                                : 'Add Job Posting',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(color: Colors.red),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
     );
   }
 }

@@ -145,7 +145,13 @@ class _JobListingTypePageState extends State<JobListingTypePage>
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 4),
-                              _buildInfoChip(Icons.work_outline, job.jobType),
+                              Row(
+                                children: [
+                                  _buildInfoChip(Icons.work_outline, job.jobType),
+                                  const SizedBox(width: 8),
+                                  _buildInfoChip(Icons.work_outline, job.salary),
+                                ],
+                              ),
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
