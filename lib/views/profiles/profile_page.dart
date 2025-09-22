@@ -42,7 +42,7 @@ class _ProfilePageState extends State<ProfilePage> {
       currentRoute: '/profile',
       actions: [ 
         IconButton(icon: const Icon(Icons.logout), tooltip: 'Sign Out', onPressed: _signOut),
-        IconButton(icon: const Icon(Icons.settings_outlined), tooltip: 'Account Settings', onPressed: () => context.push('/profile/account-settings')),
+        IconButton(icon: const Icon(Icons.settings_outlined), tooltip: 'Account Settings', onPressed: () => context.push('/profile/settings')),
       ],
       body: FutureBuilder<UserProfile?>(
         future: _profileFuture,
@@ -74,7 +74,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ListTile(leading: const Icon(Icons.directions_car_outlined), title: const Text('My Cars'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-garage')),
               ListTile(leading: const Icon(Icons.build_circle_outlined), title: const Text('My Spare Parts'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-spare-parts')),
               ListTile(leading: const Icon(Icons.storefront_outlined), title: const Text('My Repair Shops'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/my-repair-shops')),
-              ListTile(leading: const Icon(Icons.work_outline), title: const Text('My Hiring Activity'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/jobs/my-hiring-activity')),
+              ListTile(leading: const Icon(Icons.work_outline), title: const Text('My Jobs Activity'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/jobs/my-jobs-activity')),
               const Divider(),
               ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Edit Profile'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/profile/edit')),
             ],

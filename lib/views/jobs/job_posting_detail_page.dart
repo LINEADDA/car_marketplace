@@ -6,7 +6,7 @@ import '../../services/job_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 
 class JobPostingDetailPage extends StatefulWidget {
-  final String postingId; // ← Change to accept ID
+  final String postingId; 
 
   const JobPostingDetailPage({super.key, required this.postingId});
 

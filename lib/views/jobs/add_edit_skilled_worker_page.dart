@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/skilled_worker.dart';
 import '../../services/job_service.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 
 class AddEditSkilledWorkerPage extends StatefulWidget {
   final String? workerId;
@@ -102,8 +102,9 @@ class _AddEditSkilledWorkerPageState extends State<AddEditSkilledWorkerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(title: widget.isEditMode ? 'Edit Worker Profile' : 'Create Worker Profile'),
+    return ScaffoldWithNav(
+      title: widget.isEditMode ? 'Edit Worker Profile' : 'Create Worker Profile',
+      currentRoute: '/jobs/skilled-workers/add',
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Form(

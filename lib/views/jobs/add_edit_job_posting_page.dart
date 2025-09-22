@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/job_posting.dart';
 import '../../services/job_service.dart';
-import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_scaffold_with_nav.dart';
 
 class AddEditJobPostingPage extends StatefulWidget {
   final String? postingId;
@@ -102,8 +102,9 @@ class _AddEditJobPostingPageState extends State<AddEditJobPostingPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(title: widget.isEditMode ? 'Edit Job Posting' : 'Add Job Posting'),
+    return ScaffoldWithNav(
+      title: widget.isEditMode ? 'Edit Job Posting' : 'Add Job Posting',
+      currentRoute: '/jobs/postings/add',
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Form(

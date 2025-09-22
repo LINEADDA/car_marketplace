@@ -74,7 +74,7 @@ class ScaffoldWithNav extends StatelessWidget {
   int _getCurrentIndex(String route) {
     if (route.startsWith('/cars')) return 0;
     if (route.startsWith('/spare-parts')) return 1;
-    if (route.startsWith('/repair-shops')) return 2;
+    if (route.startsWith('/repair-shops') || route.startsWith('/service-detail'))  return 2;
     if (route.startsWith('/jobs')) return 3;
     if (route.startsWith('/profile') ||
         (route.startsWith('/my-garage') ||

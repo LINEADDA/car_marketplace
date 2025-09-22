@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/job_posting.dart';
 import '../../models/skilled_worker.dart';
 import '../../services/job_service.dart';
@@ -40,6 +41,29 @@ class _JobListingTypePageState extends State<JobListingTypePage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _launchDialer(String number) async {
+    final Uri launchUri = Uri(scheme: 'tel', path: number);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Could not launch dialer.')));
+    }
+  }
+
+  Future<void> _launchMap(String location) async {
+    final Uri launchUri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': location,
+    });
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Could not open map.')));
+    }
   }
 
   @override
@@ -98,10 +122,10 @@ class _JobListingTypePageState extends State<JobListingTypePage>
                 ),
                 margin: const EdgeInsets.only(bottom: 16),
                 color: isMine
-                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+                    ? theme.colorScheme.primaryContainer.withAlpha(128)
                     : theme.cardColor,
                 child: InkWell(
-                  onTap: () => context.push('/jobs/${job.id}'),
+                  onTap: () => context.push('/jobs/postings/${job.id}'),
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -127,15 +151,15 @@ class _JobListingTypePageState extends State<JobListingTypePage>
                                 spacing: 8,
                                 children: [
                                   _buildInfoChip(
-                                      Icons.location_on_outlined, job.location),
+                                      Icons.location_on_outlined,
+                                      job.location,
+                                      onTap: () => _launchMap(job.location)),
                                   _buildInfoChip(
-                                      Icons.phone_outlined, job.contactNumber),
+                                      Icons.phone_outlined,
+                                      job.contactNumber,
+                                      onTap: () => _launchDialer(job.contactNumber)),
                                 ],
                               ),
-                              if (isMine) ...[
-                                const SizedBox(height: 8),
-                                _buildTag('My Job', context),
-                              ],
                             ],
                           ),
                         ),
@@ -192,10 +216,11 @@ class _JobListingTypePageState extends State<JobListingTypePage>
                 ),
                 margin: const EdgeInsets.only(bottom: 16),
                 color: isMine
-                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+                    ? theme.colorScheme.primaryContainer.withAlpha(128)
                     : theme.cardColor,
                 child: InkWell(
-                  onTap: () => context.push('/workers/${worker.id}'),
+                  onTap: () =>
+                      context.push('/jobs/skilled-workers/${worker.id}'),
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -217,29 +242,21 @@ class _JobListingTypePageState extends State<JobListingTypePage>
                               const SizedBox(height: 4),
                               _buildInfoChip(Icons.work_outline,
                                   worker.primarySkill),
-                              if (worker.experienceHeadline != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  worker.experienceHeadline!,
-                                  style: theme.textTheme.bodySmall
-                                      ?.copyWith(color: Colors.grey[600]),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
                                 children: [
-                                  _buildInfoChip(Icons.location_on_outlined,
-                                      worker.location),
-                                  _buildInfoChip(Icons.phone_outlined,
-                                      worker.contactNumber),
+                                  _buildInfoChip(
+                                      Icons.location_on_outlined,
+                                      worker.location,
+                                      onTap: () => _launchMap(worker.location)),
+                                  _buildInfoChip(
+                                      Icons.phone_outlined,
+                                      worker.contactNumber,
+                                      onTap: () =>
+                                          _launchDialer(worker.contactNumber)),
                                 ],
                               ),
-                              if (isMine) ...[
-                                const SizedBox(height: 8),
-                                _buildTag('My Profile', context),
-                              ],
                             ],
                           ),
                         ),
@@ -269,46 +286,32 @@ class _JobListingTypePageState extends State<JobListingTypePage>
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: Theme.of(context).colorScheme.onPrimary),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-              overflow: TextOverflow.ellipsis,
+  Widget _buildInfoChip(IconData icon, String label, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: Theme.of(context).colorScheme.onPrimary),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTag(String text, BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onPrimary,
-              fontWeight: FontWeight.bold,
-            ),
+          ],
+        ),
       ),
     );
   }
