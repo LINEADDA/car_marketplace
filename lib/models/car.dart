@@ -14,7 +14,7 @@ class Car {
   final bool forSale;
   final bool isAvailable;
   final String location;
-  final bool isPublic;
+  bool isPublic;
   final String description;
   final int mileage;
   final FuelType fuelType;

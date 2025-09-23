@@ -7,6 +7,10 @@ class CarService {
 
   CarService(this._client);
 
+  Future<void> updateCarVisibility(String carId, bool isPublic) async {
+    await _client.from('cars').update({'is_public': isPublic}).eq('id', carId);
+  }
+
   Future<Car?> getCarById(String carId) async {
     try {
       if (carId.isEmpty ||
