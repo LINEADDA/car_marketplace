@@ -43,6 +43,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
   }
 
   Future<void> _deleteCar(String id) async {
+    final messenger = ScaffoldMessenger.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder:
@@ -63,28 +64,31 @@ class _MyGaragePageState extends State<MyGaragePage> {
     );
 
     if (!mounted) return;
+
     if (confirm == true) {
       try {
         await _carService.deleteCar(id);
+
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(content: Text('Car deleted successfully')),
         );
+
         _loadCars();
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to delete car: $e')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('Failed to delete car: $e')),
+        );
       }
     }
   }
 
   void _navigateToAddEdit({Car? car}) async {
-    final currentContext = context;
-    await currentContext.push('/cars/add', extra: car);
-
-    if (!mounted) return;
+    await context.push('/cars/add', extra: car);
+    if (!mounted) {
+      return;
+    }
     _loadCars();
   }
 
@@ -154,6 +158,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
                             ToggleButtons(
                               isSelected: [car.isAvailable, !car.isAvailable],
                               onPressed: (index) async {
+                                final messenger = ScaffoldMessenger.of(context);
                                 final bool newValue = index == 0;
                                 try {
                                   await _carService.updateCarVisibility(
@@ -166,7 +171,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
                                   });
                                 } catch (e) {
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  messenger.showSnackBar(
                                     SnackBar(
                                       content: Text(
                                         'Failed to update booking status: $e',
