@@ -2,6 +2,7 @@ import 'dart:convert';
 
 // Enums to match your custom types in Supabase
 enum FuelType { petrol, diesel, electric, hybrid, cng, other }
+
 enum Transmission { automatic, manual, other }
 
 class Car {
@@ -12,9 +13,9 @@ class Car {
   final String model;
   final int year;
   final bool forSale;
-  final bool isAvailable;
+  bool isAvailable;
   final String location;
-  bool isPublic;
+  final bool isPublic;
   final String description;
   final int mileage;
   final FuelType fuelType;
@@ -43,7 +44,7 @@ class Car {
     this.bookingRatePerDay,
     String? contact,
     required this.createdAt,
-  }): contact = contact ?? '00000';
+  }) : contact = contact ?? '00000';
 
   factory Car.fromMap(Map<String, dynamic> map) {
     return Car(

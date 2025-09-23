@@ -81,7 +81,8 @@ class _MyGaragePageState extends State<MyGaragePage> {
   }
 
   void _navigateToAddEdit({Car? car}) async {
-    await context.push('/cars/add', extra: car);
+    final currentContext = context;
+    await currentContext.push('/cars/add', extra: car);
 
     if (!mounted) return;
     _loadCars();
@@ -151,7 +152,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             ToggleButtons(
-                              isSelected: [car.isPublic, !car.isPublic],
+                              isSelected: [car.isAvailable, !car.isAvailable],
                               onPressed: (index) async {
                                 final bool newValue = index == 0;
                                 try {
@@ -159,11 +160,9 @@ class _MyGaragePageState extends State<MyGaragePage> {
                                     car.id,
                                     newValue,
                                   );
-
                                   if (!mounted) return;
-
                                   setState(() {
-                                    car.isPublic = newValue;
+                                    car.isAvailable = newValue;
                                   });
                                 } catch (e) {
                                   if (!mounted) return;
@@ -183,10 +182,16 @@ class _MyGaragePageState extends State<MyGaragePage> {
                                 minHeight: 36,
                                 minWidth: 80,
                               ),
-                              children: const [
-                                Text('Not Booked'),
-                                Text('Booked'),
-                              ],
+                              children:
+                                  car.forSale
+                                      ? const [
+                                        Text('Not for sale'),
+                                        Text('For sale'),
+                                      ]
+                                      : const [
+                                        Text('Not booked'),
+                                        Text('Booked'),
+                                      ],
                             ),
                             const SizedBox(width: 8),
                             PopupMenuButton<String>(

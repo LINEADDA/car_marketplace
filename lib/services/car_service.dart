@@ -7,8 +7,16 @@ class CarService {
 
   CarService(this._client);
 
-  Future<void> updateCarVisibility(String carId, bool isPublic) async {
-    await _client.from('cars').update({'is_public': isPublic}).eq('id', carId);
+  Future<void> updateCarVisibility(String carId, bool isAvailable) async {
+    try {
+      await _client
+          .from('cars')
+          .update({'is_available': isAvailable})
+          .eq('id', carId)
+          .select();
+    } catch (e) {
+      rethrow;
+    }
   }
 
   Future<Car?> getCarById(String carId) async {
@@ -26,6 +34,7 @@ class CarService {
               .select('*')
               .eq('id', carId)
               .eq('is_public', true)
+              .eq('is_available', true)
               .maybeSingle();
 
       return response == null ? null : Car.fromMap(response);
@@ -40,6 +49,7 @@ class CarService {
           .from('cars')
           .select('*')
           .eq('is_public', true)
+          .eq('is_available', true)
           .order('created_at', ascending: false);
 
       return (response as List).map((item) => Car.fromMap(item)).toList();
@@ -54,6 +64,7 @@ class CarService {
           .from('cars')
           .select('*')
           .eq('is_public', true)
+          .eq('is_available', true)
           .eq('for_sale', true)
           .order('created_at', ascending: false);
       return (response as List).map((item) => Car.fromMap(item)).toList();
@@ -68,6 +79,7 @@ class CarService {
           .from('cars')
           .select('*')
           .eq('is_public', true)
+          .eq('is_available', true)
           .eq('for_sale', false)
           .order('created_at', ascending: false);
       return (response as List).map((item) => Car.fromMap(item)).toList();
@@ -81,7 +93,8 @@ class CarService {
     bool? isForSale,
   }) async {
     try {
-      var query = _client.from('cars').select('*').eq('is_public', true);
+      var query = _client.from('cars').select('*').eq('is_public', true)
+      .eq('is_available', true);
 
       if (isForSale != null) {
         query = query.eq('for_sale', isForSale);
