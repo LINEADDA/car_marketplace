@@ -7,6 +7,8 @@ import '../../models/car.dart';
 import '../../services/car_service.dart';
 import '../../services/config_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
+import '../../widgets/media_carousel.dart';
+import '../../widgets/full_screen_media_viewer.dart';
 
 class CarDetailPage extends StatefulWidget {
   final String carId;
@@ -21,6 +23,7 @@ class _CarDetailPageState extends State<CarDetailPage> {
   late final ConfigService _configService;
 
   Car? _car;
+  List<String> _signedMediaUrls = [];
   String? _adminContactNumber;
   String? _ownerContactNumber;
   bool _isLoading = true;
@@ -55,6 +58,9 @@ class _CarDetailPageState extends State<CarDetailPage> {
 
       if (car == null) throw Exception('Car not found.');
 
+      // Generate signed URLs for media
+      final signedUrls = await _carService.getSignedMediaUrls(car.mediaUrls);
+
       String? displayedContact;
       if (car.forSale) {
         displayedContact = adminContact;
@@ -65,6 +71,7 @@ class _CarDetailPageState extends State<CarDetailPage> {
       if (mounted) {
         setState(() {
           _car = car;
+          _signedMediaUrls = signedUrls;
           _adminContactNumber = adminContact;
           _ownerContactNumber = displayedContact;
           _isLoading = false;
@@ -78,6 +85,23 @@ class _CarDetailPageState extends State<CarDetailPage> {
         });
       }
     }
+  }
+
+  // Full-screen media viewer
+  void _showFullScreenMedia(List<String> mediaUrls) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder:
+            (context, animation, secondaryAnimation) =>
+                FullScreenMediaViewer(mediaUrls: mediaUrls, initialIndex: 0),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+        barrierDismissible: true,
+        opaque: false,
+      ),
+    );
   }
 
   Future<void> _handleDeleteCar(Car car) async {
@@ -139,8 +163,6 @@ class _CarDetailPageState extends State<CarDetailPage> {
   }
 
   Future<void> _launchMap(String location) async {
-    // A more reliable way to search for a location on a map.
-    // The query parameter `q` is used for a text-based search.
     final Uri launchUri = Uri.https('www.google.com', '/maps/search/', {
       'api': '1',
       'query': location,
@@ -211,34 +233,12 @@ class _CarDetailPageState extends State<CarDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (car.mediaUrls.isNotEmpty)
-            SizedBox(
-              height: 250,
-              child: PageView.builder(
-                itemCount: car.mediaUrls.length,
-                itemBuilder: (context, index) {
-                  return Image.network(
-                    car.mediaUrls[index],
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (context, error, stack) =>
-                            const Icon(Icons.broken_image, size: 100),
-                  );
-                },
-              ),
-            )
-          else
-            Container(
-              height: 250,
-              color: Colors.grey[300],
-              child: const Center(
-                child: Icon(
-                  Icons.directions_car,
-                  size: 100,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
+          // Use signed URLs for media carousel
+          MediaCarousel(
+            mediaUrls: _signedMediaUrls,
+            onFullScreen: () => _showFullScreenMedia(_signedMediaUrls),
+          ),
+
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -247,8 +247,8 @@ class _CarDetailPageState extends State<CarDetailPage> {
                 Text(
                   _carTitle,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildPriceDisplay(car, currencyFormatter),
@@ -307,10 +307,14 @@ class _CarDetailPageState extends State<CarDetailPage> {
                   subtitle: Text(
                     contactNumber ?? 'Not available',
                     style: TextStyle(
-                      decoration: contactNumber != null
-                          ? TextDecoration.underline
-                          : TextDecoration.none,
-                      color: contactNumber != null ? Theme.of(context).colorScheme.primary : Colors.grey,
+                      decoration:
+                          contactNumber != null
+                              ? TextDecoration.underline
+                              : TextDecoration.none,
+                      color:
+                          contactNumber != null
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey,
                     ),
                   ),
                 ),
@@ -328,24 +332,24 @@ class _CarDetailPageState extends State<CarDetailPage> {
       return Text(
         currencyFormatter.format(car.salePrice),
         style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+        ),
       );
     } else if (!car.forSale && car.bookingRatePerDay != null) {
       return RichText(
         text: TextSpan(
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
           children: [
             TextSpan(text: currencyFormatter.format(car.bookingRatePerDay)),
             TextSpan(
               text: ' / day',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
+                color: Theme.of(context).colorScheme.secondary,
+              ),
             ),
           ],
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/car.dart';
@@ -18,8 +19,11 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
   late final TabController _tabController;
   late final CarService _carService;
 
-  late Future<List<Car>> _carsForSaleFuture;
-  late Future<List<Car>> _carsForBookingFuture;
+  List<Car> _carsForSale = [];
+  List<Car> _carsForBooking = [];
+  final Map<String, List<String>> _signedUrlsCache = {};
+  bool _isLoading = false;
+  String? _error;
 
   final String? currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
@@ -31,11 +35,56 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
     _loadCars();
   }
 
-  void _loadCars() {
+  Future<void> _loadCars() async {
+    if (!mounted) return;
     setState(() {
-      _carsForSaleFuture = _carService.getCarsForSale();
-      _carsForBookingFuture = _carService.getCarsForBooking();
+      _isLoading = true;
+      _error = null;
     });
+
+    try {
+      final results = await Future.wait([
+        _carService.getCarsForSale(),
+        _carService.getCarsForBooking(),
+      ]);
+
+      final carsForSale = results[0];
+      final carsForBooking = results[1];
+
+      // Generate signed URLs for all cars
+      await _generateSignedUrls([...carsForSale, ...carsForBooking]);
+
+      if (mounted) {
+        setState(() {
+          _carsForSale = carsForSale;
+          _carsForBooking = carsForBooking;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _generateSignedUrls(List<Car> cars) async {
+    for (final car in cars) {
+      if (car.mediaUrls.isNotEmpty) {
+        try {
+          final signedUrls = await _carService.getSignedMediaUrls(
+            car.mediaUrls,
+          );
+          _signedUrlsCache[car.id] = signedUrls;
+        } catch (e) {
+          // If signing fails, use original URLs
+          _signedUrlsCache[car.id] = car.mediaUrls;
+        }
+      }
+    }
   }
 
   @override
@@ -83,127 +132,138 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildCarsList(_carsForBookingFuture),
-          _buildCarsList(_carsForSaleFuture),
+          _buildCarsList(_carsForBooking),
+          _buildCarsList(_carsForSale),
         ],
       ),
     );
   }
 
-  Widget _buildCarsList(Future<List<Car>> carsFuture) {
-    return FutureBuilder<List<Car>>(
-      future: carsFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
+  Widget _buildCarsList(List<Car> cars) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        final allCars = snapshot.data ?? [];
-        if (allCars.isEmpty) {
-          return const Center(
-            child: Text(
-              'No cars available',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Error: $_error', style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _loadCars, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+
+    if (cars.isEmpty) {
+      return const Center(
+        child: Text(
+          'No cars available',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+
+    // Put current user's cars first
+    final myCars = cars.where((car) => car.ownerId == currentUserId).toList();
+    final otherCars =
+        cars.where((car) => car.ownerId != currentUserId).toList();
+    final sortedCars = [...myCars, ...otherCars];
+
+    return RefreshIndicator(
+      onRefresh: _loadCars,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16.0),
+        itemCount: sortedCars.length,
+        itemBuilder: (context, index) {
+          final car = sortedCars[index];
+          final isMyCar = car.ownerId == currentUserId;
+          final theme = Theme.of(context);
+          final currencyFormatter = NumberFormat.currency(
+            locale: 'en_IN',
+            symbol: '',
+            decimalDigits: 0,
           );
-        }
 
-        // Put current user's cars first
-        final myCars =
-            allCars.where((car) => car.ownerId == currentUserId).toList();
-        final otherCars =
-            allCars.where((car) => car.ownerId != currentUserId).toList();
-        final sortedCars = [...myCars, ...otherCars];
+          // Get signed URLs for this car
+          final signedUrls = _signedUrlsCache[car.id] ?? [];
+          final firstImageUrl = signedUrls.isNotEmpty ? signedUrls.first : null;
 
-        return RefreshIndicator(
-          onRefresh: () async => _loadCars(),
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: sortedCars.length,
-            itemBuilder: (context, index) {
-              final car = sortedCars[index];
-              final isMyCar = car.ownerId == currentUserId;
-              final theme = Theme.of(context);
-
-              return Card(
-                elevation: isMyCar ? 6 : 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16.0),
+          return Card(
+            elevation: isMyCar ? 6 : 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            margin: const EdgeInsets.only(bottom: 16),
+            color:
+                isMyCar
+                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+                    : theme.cardColor,
+            child: InkWell(
+              onTap: () => context.push('/cars/${car.id}'),
+              borderRadius: BorderRadius.circular(16.0),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12.0,
+                  horizontal: 16.0,
                 ),
-                margin: const EdgeInsets.only(bottom: 16),
-                color:
-                    isMyCar
-                        ? theme.colorScheme.primaryContainer.withValues(
-                          alpha: 0.5,
-                        )
-                        : theme.cardColor,
-                child: InkWell(
-                  onTap: () => context.push('/cars/${car.id}'),
-                  borderRadius: BorderRadius.circular(16.0),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12.0,
-                      horizontal: 16.0,
-                    ),
-                    child: Row(
-                      children: [
-                        _buildCarImage(car.mediaUrls.firstOrNull),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
+                  children: [
+                    _buildCarImage(firstImageUrl),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${car.make} ${car.model} ${car.year}',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
                             children: [
-                              Text(
-                                '${car.make} ${car.model} ${car.year}',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                              _buildInfoChip(
+                                Icons.currency_rupee_rounded,
+                                car.forSale
+                                    ? currencyFormatter.format(
+                                      car.salePrice ?? 0,
+                                    )
+                                    : '${currencyFormatter.format(car.bookingRatePerDay ?? 0)}/Hr',
                               ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 4,
-                                children: [
-                                  _buildInfoChip(
-                                    Icons.currency_rupee_rounded,
-                                    car.forSale
-                                        ? car.salePrice?.toStringAsFixed(0) ??
-                                            '0'
-                                        : '${car.bookingRatePerDay?.toStringAsFixed(0) ?? '0'}/Hr',
-                                  ),
-                                  _buildInfoChip(
-                                    Icons.location_on_outlined,
-                                    car.location,
-                                    onTap: () => _launchMap(car.location),
-                                  ),
-                                  _buildInfoChip(
-                                    Icons.phone_outlined,
-                                    car.contact,
-                                    onTap: () => _launchDialer(car.contact),
-                                  ),
-                                ],
+                              _buildInfoChip(
+                                Icons.location_on_outlined,
+                                car.location,
+                                onTap: () => _launchMap(car.location),
+                              ),
+                              _buildInfoChip(
+                                Icons.phone_outlined,
+                                car.contact,
+                                onTap: () => _launchDialer(car.contact),
                               ),
                             ],
                           ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          color: Colors.grey,
-                          size: 16,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.grey,
+                      size: 16,
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-        );
-      },
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -211,8 +271,8 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 80,
-        height: 80,
+        width: 100,
+        height: 75,
         color: Colors.grey.shade200,
         child:
             imageUrl != null && imageUrl.isNotEmpty
@@ -222,13 +282,13 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
                   errorBuilder:
                       (context, error, stackTrace) => const Icon(
                         Icons.directions_car,
-                        size: 40,
+                        size: 30,
                         color: Colors.grey,
                       ),
                 )
                 : const Icon(
                   Icons.directions_car,
-                  size: 40,
+                  size: 30,
                   color: Colors.grey,
                 ),
       ),

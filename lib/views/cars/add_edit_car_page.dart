@@ -1,4 +1,7 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -11,21 +14,14 @@ import '../../widgets/app_scaffold_with_nav.dart';
 
 class AddEditCarPage extends StatefulWidget {
   final String? carId;
-  final Car? carToEdit;
   final String? initialListingType;
 
-  const AddEditCarPage({
-    super.key,
-    this.carId,
-    this.carToEdit,
-    this.initialListingType,
-  });
+  const AddEditCarPage({super.key, this.carId, this.initialListingType});
 
   @override
   State<AddEditCarPage> createState() => _AddEditCarPageState();
 }
 
-// _buildTextFormField
 class _AddEditCarPageState extends State<AddEditCarPage> {
   final _formKey = GlobalKey<FormState>();
   late final CarService _carService;
@@ -45,10 +41,14 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   Transmission _selectedTransmission = Transmission.manual;
   bool _isForSale = false;
   String? _userRole;
+  Car? _existingCar;
 
   final List<XFile> _pickedImages = [];
   late List<String> _existingImageUrls;
   bool _isLoading = false;
+
+  // Determine if we're editing or creating based on carId
+  bool get _isEditMode => widget.carId != null && _existingCar != null;
 
   @override
   void initState() {
@@ -62,34 +62,45 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
 
     _existingImageUrls = [];
 
-    if (widget.carToEdit != null) {
-      _populateFields();
-      _existingImageUrls = List.from(widget.carToEdit!.mediaUrls);
-    } else if (widget.carId != null) {
-      _loadCarById(widget.carId!);
+    if (widget.carId != null) {
+      _loadCarForEdit(widget.carId!);
     }
   }
 
-  Future<void> _loadCarById(String id) async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _loadCarForEdit(String carId) async {
+    setState(() => _isLoading = true);
+
     try {
-      final car = await _carService.getCarById(id);
+      final car = await _carService.getCarById(carId);
       if (car != null && mounted) {
-        _existingImageUrls = List.from(car.mediaUrls);
+        // Generate signed URLs for existing media
+        final signedUrls = await _carService.getSignedMediaUrls(car.mediaUrls);
+
         setState(() {
-          _populateFieldsWithCar(car);
+          _existingCar = car;
+          _existingImageUrls = List.from(signedUrls); // Use signed URLs
+          _populateFields(car);
         });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Car not found'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          context.pop();
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load car details: $e'),
+            content: Text('Failed to load car: $e'),
             backgroundColor: Colors.red,
           ),
         );
+        context.pop();
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -119,11 +130,12 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
         final role = (response['role'] as String?)?.toLowerCase();
         setState(() {
           _userRole = role;
-          if (role == 'driver') {
-            _isForSale = false;
-          } else {
-            _isForSale = true;
+          if (role == 'driver' && widget.carId == null) {
+            _isForSale = false; // Default to booking for new cars by drivers
+          } else if (widget.carId == null) {
+            _isForSale = true; // Default to sale for new cars by non-drivers
           }
+          // For existing cars, _isForSale will be set when loading car data
         });
       }
     } catch (e) {
@@ -131,23 +143,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     }
   }
 
-  void _populateFields() {
-    final car = widget.carToEdit!;
-    _makeController.text = car.make;
-    _modelController.text = car.model;
-    _yearController.text = car.year.toString();
-    _mileageController.text = car.mileage.toString();
-    _locationController.text = car.location;
-    _contactController.text = car.contact;
-    _descriptionController.text = car.description;
-    _salePriceController.text = car.salePrice?.toString() ?? '';
-    _bookingRateController.text = car.bookingRatePerDay?.toString() ?? '';
-    _selectedFuelType = car.fuelType;
-    _selectedTransmission = car.transmission;
-    _isForSale = car.forSale;
-  }
-
-  void _populateFieldsWithCar(Car car) {
+  void _populateFields(Car car) {
     _makeController.text = car.make;
     _modelController.text = car.model;
     _yearController.text = car.year.toString();
@@ -176,18 +172,150 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     super.dispose();
   }
 
+  // Image validation method
+  Future<bool> _validateImageFile(XFile file) async {
+    try {
+      final fileExists = await File(file.path).exists();
+      if (!fileExists) return false;
+
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return false;
+
+      // Check if it's a valid image by trying to decode it
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      return frame.image.width > 0 && frame.image.height > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<void> _pickImages() async {
-    final images = await ImagePicker().pickMultiImage(imageQuality: 80);
-    if (images.isNotEmpty) {
-      setState(() => _pickedImages.addAll(images));
+    try {
+      final images = await ImagePicker().pickMultiImage(imageQuality: 80);
+      if (images.isNotEmpty) {
+        // Show loading dialog while validating images
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder:
+                (context) => const AlertDialog(
+                  content: Row(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 20),
+                      Text('Validating images...'),
+                    ],
+                  ),
+                ),
+          );
+        }
+
+        // Validate images before adding
+        final validImages = <XFile>[];
+        final invalidImageNames = <String>[];
+
+        for (final image in images) {
+          final isValid = await _validateImageFile(image);
+          if (isValid) {
+            validImages.add(image);
+          } else {
+            invalidImageNames.add(image.name);
+          }
+        }
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        if (validImages.isNotEmpty) {
+          setState(() => _pickedImages.addAll(validImages));
+        }
+
+        if (invalidImageNames.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Skipped ${invalidImageNames.length} invalid image(s): ${invalidImageNames.join(', ')}',
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Close loading dialog if it's open
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking images: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _takePicture() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.camera);
-    if (pickedFile != null) {
-      setState(() => _pickedImages.add(pickedFile));
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.camera);
+      if (pickedFile != null) {
+        // Show loading while validating
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder:
+                (context) => const AlertDialog(
+                  content: Row(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 20),
+                      Text('Processing image...'),
+                    ],
+                  ),
+                ),
+          );
+        }
+
+        final isValid = await _validateImageFile(pickedFile);
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        if (isValid) {
+          setState(() => _pickedImages.add(pickedFile));
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Invalid image captured. Please try again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Close loading dialog if it's open
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error taking picture: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -199,24 +327,144 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     setState(() => _existingImageUrls.removeAt(index));
   }
 
-  Future<void> _saveCar() async {
+  // Helper method to check if a file is a video
+  bool _isVideoFile(XFile file) {
+    final extension = file.path.toLowerCase().split('.').last;
+    return extension == 'mp4' || extension == 'mov' || extension == 'avi';
+  }
+
+  // Show full-screen preview of selected media
+  void _previewMedia(ImageProvider imageProvider, {bool isVideo = false}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder:
+          (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    panEnabled: true,
+                    boundaryMargin: const EdgeInsets.all(20),
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Container(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.8,
+                        maxWidth: MediaQuery.of(context).size.width * 0.9,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child:
+                            isVideo
+                                ? Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Image(
+                                      image: imageProvider,
+                                      fit: BoxFit.contain,
+                                    ),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      padding: const EdgeInsets.all(16),
+                                      child: const Icon(
+                                        Icons.play_arrow,
+                                        color: Colors.white,
+                                        size: 48,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      bottom: 8,
+                                      left: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.7),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'VIDEO',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                                : Image(
+                                  image: imageProvider,
+                                  fit: BoxFit.contain,
+                                ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 40,
+                  right: 20,
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  // Upload new images and return their URLs
+  Future<List<String>> _uploadNewImages(String userId, String carId) async {
+    final newImageUrls = <String>[];
+
+    for (final imageFile in _pickedImages) {
+      final Uint8List imageBytes = await imageFile.readAsBytes();
+      final imageUrl = await _carService.uploadCarMedia(
+        userId,
+        carId,
+        imageBytes,
+      );
+      newImageUrls.add(imageUrl);
+    }
+
+    return newImageUrls;
+  }
+
+  // Create a new car
+  Future<void> _createCar() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
-      final carId = widget.carToEdit?.id ?? _uuid.v4();
-      final updatedImageUrls = List<String>.from(_existingImageUrls);
+      final carId = _uuid.v4();
 
-      for (final imageFile in _pickedImages) {
-        final imageUrl = await _carService.uploadCarMedia(
-          userId,
-          carId,
-          File(imageFile.path),
-        );
-        updatedImageUrls.add(imageUrl);
-      }
+      // Upload new images
+      final newImageUrls = await _uploadNewImages(userId, carId);
 
       final carData = Car(
         id: carId,
@@ -232,43 +480,111 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
         transmission: _selectedTransmission,
         forSale: _isForSale,
         isPublic: true,
-        isAvailable: widget.carToEdit?.isAvailable ?? true,
-        createdAt: widget.carToEdit?.createdAt ?? DateTime.now(),
-        mediaUrls: updatedImageUrls,
+        isAvailable: true,
+        createdAt: DateTime.now(),
+        mediaUrls: newImageUrls,
         salePrice:
             _isForSale ? double.tryParse(_salePriceController.text) : null,
         bookingRatePerDay:
             !_isForSale ? double.tryParse(_bookingRateController.text) : null,
       );
 
-      if (widget.carToEdit == null) {
-        await _carService.createCar(carData);
-      } else {
-        await _carService.updateCar(carData);
-      }
+      await _carService.createCar(carData);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.carToEdit != null
-                  ? 'Car updated successfully!'
-                  : 'Car listed successfully!',
-            ),
-          ),
+          const SnackBar(content: Text('Car listed successfully!')),
         );
         context.pop();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error creating car: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updateCar() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_existingCar == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser!.id;
+
+      // Track which media URLs were removed
+      final originalMediaUrls = _existingCar!.mediaUrls.toSet();
+      final currentMediaUrls = _existingImageUrls.toSet();
+      final removedMediaUrls =
+          originalMediaUrls.difference(currentMediaUrls).toList();
+
+      // Upload new images and combine with existing ones
+      final newImageUrls = await _uploadNewImages(userId, _existingCar!.id);
+      final allImageUrls = [..._existingImageUrls, ...newImageUrls];
+
+      final updatedCarData = Car(
+        id: _existingCar!.id,
+        ownerId: _existingCar!.ownerId,
+        make: _makeController.text.trim(),
+        model: _modelController.text.trim(),
+        year: int.parse(_yearController.text),
+        mileage: double.parse(_mileageController.text).toInt(),
+        location: _locationController.text.trim(),
+        contact: _contactController.text.trim(),
+        description: _descriptionController.text.trim(),
+        fuelType: _selectedFuelType,
+        transmission: _selectedTransmission,
+        forSale: _isForSale,
+        isPublic: _existingCar!.isPublic,
+        isAvailable: _existingCar!.isAvailable,
+        createdAt: _existingCar!.createdAt,
+        mediaUrls: allImageUrls,
+        salePrice:
+            _isForSale ? double.tryParse(_salePriceController.text) : null,
+        bookingRatePerDay:
+            !_isForSale ? double.tryParse(_bookingRateController.text) : null,
+      );
+
+      // Update car with removed media cleanup
+      await _carService.updateCar(
+        updatedCarData,
+        removedMediaUrls: removedMediaUrls,
+      );
+
       if (mounted) {
-        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Car updated successfully!')),
+        );
+        context.pop();
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating car: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Main submit handler - delegates to create or update
+  void _handleSubmit() {
+    if (_isEditMode) {
+      _updateCar();
+    } else {
+      _createCar();
     }
   }
 
@@ -282,14 +598,13 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   @override
   Widget build(BuildContext context) {
     final isDriver = _userRole?.toLowerCase() == 'driver';
-    final isEditing = widget.carToEdit != null;
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
 
     return ScaffoldWithNav(
-      title: isEditing ? 'Edit Car' : 'Add Car',
+      title: _isEditMode ? 'Edit Car' : 'Add Car',
       currentRoute: '/cars/add',
       body:
           _isLoading
@@ -374,9 +689,10 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                   controller: _mileageController,
                                   labelText: 'Mileage (km/l) *',
                                   hintText: 'e.g., 18.5',
-                                  keyboardType: TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
                                   inputFormatters: [
                                     FilteringTextInputFormatter.allow(
                                       RegExp(r'^\d+\.?\d*'),
@@ -476,7 +792,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           _buildTextFormField(
                             controller: _contactController,
                             labelText: 'Contact *',
@@ -551,6 +867,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                               child: ListView(
                                 scrollDirection: Axis.horizontal,
                                 children: [
+                                  // Existing images from network
                                   ..._existingImageUrls.asMap().entries.map((
                                     entry,
                                   ) {
@@ -562,6 +879,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                           () => _removeExistingImage(index),
                                     );
                                   }),
+                                  // New picked images from local files
                                   ..._pickedImages.asMap().entries.map((entry) {
                                     final index = entry.key;
                                     final image = entry.value;
@@ -570,6 +888,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                         File(image.path),
                                       ),
                                       onRemove: () => _removeImage(index),
+                                      file:
+                                          image, // Pass the file to detect video type
                                     );
                                   }),
                                 ],
@@ -581,7 +901,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _saveCar,
+                          onPressed: _isLoading ? null : _handleSubmit,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16.0),
                             shape: RoundedRectangleBorder(
@@ -602,7 +922,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                     ),
                                   )
                                   : Text(
-                                    isEditing ? 'Update Car' : 'Save Car',
+                                    _isEditMode ? 'Update Car' : 'Save Car',
                                     style: textTheme.titleMedium?.copyWith(
                                       color: colorScheme.onPrimary,
                                       fontWeight: FontWeight.bold,
@@ -804,23 +1124,194 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
+  // Enhanced image thumbnail with error handling and tap-to-view
   Widget _buildImageThumbnail({
     required ImageProvider imageProvider,
     required VoidCallback onRemove,
+    XFile? file,
   }) {
+    final isVideo = file != null && _isVideoFile(file);
+
     return Container(
       margin: const EdgeInsets.only(right: 12),
       width: 100,
       height: 100,
       child: Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image(
-              image: imageProvider,
-              width: 100,
-              height: 100,
-              fit: BoxFit.cover,
+          GestureDetector(
+            onTap: () => _previewMedia(imageProvider, isVideo: isVideo),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                children: [
+                  // Use FutureBuilder for better error handling with file images
+                  file != null
+                      ? FutureBuilder<bool>(
+                        future: _validateImageFile(file),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          if (snapshot.hasError || snapshot.data == false) {
+                            return Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.broken_image,
+                                    color: Colors.red,
+                                    size: 30,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Invalid',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return Image.file(
+                            File(file.path),
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              print('File image loading error: $error');
+                              return Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.broken_image,
+                                      color: Colors.red,
+                                      size: 30,
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'Error',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      )
+                      : Image(
+                        image: imageProvider,
+                        width: 100,
+                        height: 100,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          print('Network image loading error: $error');
+                          return Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.broken_image,
+                                  color: Colors.red,
+                                  size: 30,
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Error',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                  if (isVideo)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_fill,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Tap indicator - only show for valid images
+                  if (file == null)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.visibility,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           Positioned(

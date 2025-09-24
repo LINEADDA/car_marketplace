@@ -15,6 +15,7 @@ class MyGaragePage extends StatefulWidget {
 class _MyGaragePageState extends State<MyGaragePage> {
   late final CarService _carService;
   List<Car> _cars = [];
+  final Map<String, String?> _thumbnailCache = {};
   bool _isLoading = true;
   String? _error;
 
@@ -30,16 +31,42 @@ class _MyGaragePageState extends State<MyGaragePage> {
       _isLoading = true;
       _error = null;
     });
+
     try {
       final cars = await _carService.getCarsByOwner();
       if (!mounted) return;
+
+      // Generate signed URLs for first image of each car
+      await _generateThumbnails(cars);
+
       setState(() => _cars = cars);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'Failed to load cars: $e');
     }
+
     if (!mounted) return;
     setState(() => _isLoading = false);
+  }
+
+  Future<void> _generateThumbnails(List<Car> cars) async {
+    for (final car in cars) {
+      if (car.mediaUrls.isNotEmpty) {
+        try {
+          // Generate signed URL for just the first image (thumbnail)
+          final signedUrls = await _carService.getSignedMediaUrls([
+            car.mediaUrls.first,
+          ]);
+          _thumbnailCache[car.id] =
+              signedUrls.isNotEmpty ? signedUrls.first : null;
+        } catch (e) {
+          // If signing fails, use original URL
+          _thumbnailCache[car.id] = car.mediaUrls.first;
+        }
+      } else {
+        _thumbnailCache[car.id] = null;
+      }
+    }
   }
 
   Future<void> _deleteCar(String id) async {
@@ -57,6 +84,10 @@ class _MyGaragePageState extends State<MyGaragePage> {
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(ctx).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
                 child: const Text('Delete'),
               ),
             ],
@@ -74,6 +105,8 @@ class _MyGaragePageState extends State<MyGaragePage> {
           const SnackBar(content: Text('Car deleted successfully')),
         );
 
+        // Remove from cache
+        _thumbnailCache.remove(id);
         _loadCars();
       } catch (e) {
         if (!mounted) return;
@@ -84,11 +117,17 @@ class _MyGaragePageState extends State<MyGaragePage> {
     }
   }
 
-  void _navigateToAddEdit({Car? car}) async {
-    await context.push('/cars/add', extra: car);
-    if (!mounted) {
-      return;
+  void _navigateToAddEdit() async {
+    await context.push('/cars/add');
+    if (!mounted) return;
+    _loadCars();
+  }
+
+  void _navigateToEdit({Car? car}) async {
+    if (car?.id != null) {
+      await context.push('/cars/edit/${car!.id}');
     }
+    if (!mounted) return;
     _loadCars();
   }
 
@@ -102,7 +141,17 @@ class _MyGaragePageState extends State<MyGaragePage> {
               ? const Center(child: CircularProgressIndicator())
               : _error != null
               ? Center(
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _loadCars,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               )
               : _cars.isEmpty
               ? Center(
@@ -125,32 +174,21 @@ class _MyGaragePageState extends State<MyGaragePage> {
                   itemCount: _cars.length,
                   itemBuilder: (context, index) {
                     final car = _cars[index];
+                    final thumbnailUrl = _thumbnailCache[car.id];
+
                     return Card(
                       margin: const EdgeInsets.symmetric(vertical: 8.0),
                       clipBehavior: Clip.antiAlias,
                       child: ListTile(
-                        leading:
-                            car.mediaUrls.isNotEmpty
-                                ? Image.network(
-                                  car.mediaUrls.first,
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                  errorBuilder:
-                                      (c, o, s) => const Icon(
-                                        Icons.directions_car,
-                                        size: 40,
-                                      ),
-                                )
-                                : const Icon(Icons.directions_car, size: 40),
+                        leading: _buildCarImage(thumbnailUrl),
                         title: Text(
                           '${car.make} ${car.model} (${car.year})',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Text(
                           car.forSale
-                              ? 'For Sale: ₹${car.salePrice?.toStringAsFixed(0)}'
-                              : 'For Booking: ₹${car.bookingRatePerDay?.toStringAsFixed(0)}/day',
+                              ? 'For Sale: ₹${car.salePrice?.toStringAsFixed(0) ?? 'N/A'}'
+                              : 'For Booking: ₹${car.bookingRatePerDay?.toStringAsFixed(0) ?? 'N/A'}/day',
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -167,14 +205,17 @@ class _MyGaragePageState extends State<MyGaragePage> {
                                   );
                                   if (!mounted) return;
                                   setState(() {
-                                    car.isAvailable = newValue;
+                                    _cars[_cars.indexWhere(
+                                          (c) => c.id == car.id,
+                                        )]
+                                        .isAvailable = newValue;
                                   });
                                 } catch (e) {
                                   if (!mounted) return;
                                   messenger.showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        'Failed to update booking status: $e',
+                                        'Failed to update availability: $e',
                                       ),
                                     ),
                                   );
@@ -187,22 +228,16 @@ class _MyGaragePageState extends State<MyGaragePage> {
                                 minHeight: 36,
                                 minWidth: 80,
                               ),
-                              children:
-                                  car.forSale
-                                      ? const [
-                                        Text('Not for sale'),
-                                        Text('For sale'),
-                                      ]
-                                      : const [
-                                        Text('Not booked'),
-                                        Text('Booked'),
-                                      ],
+                              children: const [
+                                Text('Available'),
+                                Text('Unavailable'),
+                              ],
                             ),
                             const SizedBox(width: 8),
                             PopupMenuButton<String>(
                               onSelected: (value) {
                                 if (value == 'edit') {
-                                  _navigateToAddEdit(car: car);
+                                  _navigateToEdit(car: car);
                                 } else if (value == 'delete') {
                                   _deleteCar(car.id);
                                 }
@@ -250,6 +285,34 @@ class _MyGaragePageState extends State<MyGaragePage> {
         onPressed: () => _navigateToAddEdit(),
         tooltip: 'Add Car',
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildCarImage(String? imageUrl) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 100,
+        height: 75,
+        color: Colors.grey.shade200,
+        child:
+            imageUrl != null && imageUrl.isNotEmpty
+                ? Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder:
+                      (context, error, stackTrace) => const Icon(
+                        Icons.directions_car,
+                        size: 30,
+                        color: Colors.grey,
+                      ),
+                )
+                : const Icon(
+                  Icons.directions_car,
+                  size: 30,
+                  color: Colors.grey,
+                ),
       ),
     );
   }
