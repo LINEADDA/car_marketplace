@@ -1,6 +1,11 @@
+// ignore_for_file: avoid_print
+
+// import 'dart:io';
+// import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+//import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/spare_part.dart';
@@ -21,6 +26,8 @@ class AddEditSparePartPage extends StatefulWidget {
 class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
   final _formKey = GlobalKey<FormState>();
   late final SparePartService _sparePartService;
+  //final _uuid = const Uuid();
+
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _priceController;
@@ -33,6 +40,9 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // final List<XFile> _pickedImages = [];
+  // late List<String> _existingImageUrls;
+
   @override
   void initState() {
     super.initState();
@@ -42,9 +52,10 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
     _priceController = TextEditingController();
     _contactController = TextEditingController();
     _locationController = TextEditingController();
+    //_existingImageUrls = [];
 
     if (widget.isEditMode) {
-      _loadPartForEditing();
+      _loadPartForEditing(widget.partId!);
     }
   }
 
@@ -58,14 +69,17 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
     super.dispose();
   }
 
-  Future<void> _loadPartForEditing() async {
+  Future<void> _loadPartForEditing(String partId) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
     try {
-      final part = await _sparePartService.getPartById(widget.partId!);
+      final part = await _sparePartService.getPartById(partId);
       if (mounted && part != null) {
+
+        //final signedUrls = await _sparePartService.getSignedMediaUrls(part.mediaUrls);
+
         setState(() {
           _titleController.text = part.title;
           _descriptionController.text = part.description;
@@ -73,7 +87,18 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
           _contactController.text = part.contact.toString();
           _locationController.text = part.location;
           _selectedCondition = part.condition;
+          //_existingImageUrls = List.from(signedUrls);
         });
+      }else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Spare part not found'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          context.pop();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -84,7 +109,7 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
     }
   }
 
-  Future<void> _submitForm() async {
+  Future<void> _createUpdatePart() async {
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please correct the errors in the form.')),
@@ -302,7 +327,7 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
                         const Center(child: CircularProgressIndicator())
                       else
                         ElevatedButton(
-                          onPressed: _submitForm,
+                          onPressed: _createUpdatePart,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Theme.of(context).primaryColor,
                             foregroundColor: Colors.white,

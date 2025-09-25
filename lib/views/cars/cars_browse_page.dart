@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
+import '../../services/media_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 
 class CarsBrowsePage extends StatefulWidget {
@@ -18,6 +19,7 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late final CarService _carService;
+  late final MediaService _mediaService;
 
   List<Car> _carsForSale = [];
   List<Car> _carsForBooking = [];
@@ -75,7 +77,7 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
     for (final car in cars) {
       if (car.mediaUrls.isNotEmpty) {
         try {
-          final signedUrls = await _carService.getSignedMediaUrls(
+          final signedUrls = await _mediaService.getSignedMediaUrls(
             car.mediaUrls,
           );
           _signedUrlsCache[car.id] = signedUrls;
@@ -325,4 +327,5 @@ class _CarsBrowsePageState extends State<CarsBrowsePage>
       ),
     );
   }
+  
 }

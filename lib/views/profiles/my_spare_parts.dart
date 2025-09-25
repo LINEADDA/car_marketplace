@@ -39,7 +39,7 @@ class _MySparePartsPageState extends State<MySparePartsPage> {
       _error = null;
     });
     try {
-      final parts = await _sparePartService.getSparePartsForUser(
+      final parts = await _sparePartService.getSparePartsByOwner(
         _currentUserId,
       );
       if (!mounted) return;

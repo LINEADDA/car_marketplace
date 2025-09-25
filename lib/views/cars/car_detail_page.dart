@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
+import '../../services/media_service.dart';
 import '../../services/config_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 import '../../widgets/media_carousel.dart';
@@ -20,6 +21,7 @@ class CarDetailPage extends StatefulWidget {
 
 class _CarDetailPageState extends State<CarDetailPage> {
   late final CarService _carService;
+  late final MediaService _mediaService;
   late final ConfigService _configService;
 
   Car? _car;
@@ -40,7 +42,9 @@ class _CarDetailPageState extends State<CarDetailPage> {
   void initState() {
     super.initState();
     _carService = CarService(Supabase.instance.client);
+    _mediaService = MediaService.forCars(Supabase.instance.client);
     _configService = ConfigService(Supabase.instance.client);
+
     _fetchDetails();
   }
 
@@ -59,7 +63,7 @@ class _CarDetailPageState extends State<CarDetailPage> {
       if (car == null) throw Exception('Car not found.');
 
       // Generate signed URLs for media
-      final signedUrls = await _carService.getSignedMediaUrls(car.mediaUrls);
+      final signedUrls = await _mediaService.getSignedMediaUrls(car.mediaUrls);
 
       String? displayedContact;
       if (car.forSale) {
@@ -371,4 +375,5 @@ class _CarDetailPageState extends State<CarDetailPage> {
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
     );
   }
+  
 }

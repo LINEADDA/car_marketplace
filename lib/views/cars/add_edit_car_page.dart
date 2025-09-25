@@ -1,7 +1,5 @@
 // ignore_for_file: avoid_print
 
-import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
+import '../../services/media_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 
 class AddEditCarPage extends StatefulWidget {
@@ -43,6 +42,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   String? _userRole;
   Car? _existingCar;
 
+  late final MediaService mediaService;
   final List<XFile> _pickedImages = [];
   late List<String> _existingImageUrls;
   bool _isLoading = false;
@@ -54,6 +54,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   void initState() {
     super.initState();
     _carService = CarService(Supabase.instance.client);
+    mediaService = MediaService.forCars(Supabase.instance.client);
     _fetchUserRole();
 
     if (widget.initialListingType != null) {
@@ -67,18 +68,189 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     }
   }
 
+  @override
+  void dispose() {
+    _makeController.dispose();
+    _modelController.dispose();
+    _yearController.dispose();
+    _mileageController.dispose();
+    _locationController.dispose();
+    _contactController.dispose();
+    _descriptionController.dispose();
+    _salePriceController.dispose();
+    _bookingRateController.dispose();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message, {Color? backgroundColor}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showLoadingDialog(String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => LoadingDialog(message: message),
+    );
+  }
+
+  void _hideLoadingDialog() {
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  MediaServiceCallbacks get _callbacks => MediaServiceCallbacks(
+    onFilesAdded: (files) {
+      setState(() {
+        _pickedImages.addAll(files);
+      });
+    },
+    onFileRemoved: (index) {
+      setState(() {
+        _pickedImages.removeAt(index);
+      });
+    },
+    onExistingFileRemoved: (index) {
+      setState(() {
+        _existingImageUrls.removeAt(index);
+      });
+    },
+    onShowSnackBar: _showSnackBar,
+    onShowLoading: () => _showLoadingDialog('Processing images...'),
+    onHideLoading: _hideLoadingDialog,
+  );
+
+  Future<bool> validateImageFile(XFile file) async{
+    return await mediaService.validateImageFile(file);
+  }
+
+  Future<void> pickImages() async {
+    await mediaService.pickImages(context, _callbacks);
+  }
+
+  Future<void> takePicture() async {
+    await mediaService.takePicture(context, _callbacks);
+  }
+
+  void removeImage(int index) {
+    mediaService.removeFile(index, _callbacks);
+  }
+
+  void removeExistingImage(int index) {
+    mediaService.removeExistingFile(index, _callbacks);
+  }
+
+  void previewMedia(ImageProvider imageProvider, XFile? file) {
+    final isVideo = file != null ? mediaService.isVideoFile(file) : false;
+    mediaService.previewMedia(context, imageProvider, isVideo: isVideo);
+  }
+
+  Future<List<String>> uploadNewImages(String userId, String itemId) async {
+    final newImageUrls = <String>[];
+
+    for (final imageFile in _pickedImages) {
+      try {
+        final imageBytes = await imageFile.readAsBytes();
+        final imageUrl = await mediaService.uploadMedia(
+          userId,
+          itemId,
+          imageBytes,
+        );
+        newImageUrls.add(imageUrl);
+      } catch (e) {
+        _showSnackBar(
+          'Failed to upload ${imageFile.name}: $e',
+          backgroundColor: Colors.red,
+        );
+      }
+    }
+
+    return newImageUrls;
+  }
+
+  Future<List<String>> getSignedUrls(List<String> urls) async {
+    return await mediaService.getSignedMediaUrls(urls);
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////
+
+  Future<void> _createCar() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser!.id;
+      final carId = _uuid.v4();
+
+      // Upload new images
+      final newImageUrls = await uploadNewImages(userId, carId);
+
+      final carData = Car(
+        id: carId,
+        ownerId: userId,
+        make: _makeController.text.trim(),
+        model: _modelController.text.trim(),
+        year: int.parse(_yearController.text),
+        mileage: double.parse(_mileageController.text).toInt(),
+        location: _locationController.text.trim(),
+        contact: _contactController.text.trim(),
+        description: _descriptionController.text.trim(),
+        fuelType: _selectedFuelType,
+        transmission: _selectedTransmission,
+        forSale: _isForSale,
+        isPublic: true,
+        isAvailable: true,
+        createdAt: DateTime.now(),
+        mediaUrls: newImageUrls,
+        salePrice:
+            _isForSale ? double.tryParse(_salePriceController.text) : null,
+        bookingRatePerDay:
+            !_isForSale ? double.tryParse(_bookingRateController.text) : null,
+      );
+
+      await _carService.createCar(carData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Car listed successfully!')),
+        );
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating car: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _loadCarForEdit(String carId) async {
     setState(() => _isLoading = true);
 
     try {
       final car = await _carService.getCarById(carId);
       if (car != null && mounted) {
-        // Generate signed URLs for existing media
-        final signedUrls = await _carService.getSignedMediaUrls(car.mediaUrls);
+        final signedUrls = await getSignedUrls(car.mediaUrls);
 
         setState(() {
           _existingCar = car;
-          _existingImageUrls = List.from(signedUrls); // Use signed URLs
+          _existingImageUrls = List.from(signedUrls); 
           _populateFields(car);
         });
       } else {
@@ -158,359 +330,6 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     _isForSale = car.forSale;
   }
 
-  @override
-  void dispose() {
-    _makeController.dispose();
-    _modelController.dispose();
-    _yearController.dispose();
-    _mileageController.dispose();
-    _locationController.dispose();
-    _contactController.dispose();
-    _descriptionController.dispose();
-    _salePriceController.dispose();
-    _bookingRateController.dispose();
-    super.dispose();
-  }
-
-  // Image validation method
-  Future<bool> _validateImageFile(XFile file) async {
-    try {
-      final fileExists = await File(file.path).exists();
-      if (!fileExists) return false;
-
-      final bytes = await file.readAsBytes();
-      if (bytes.isEmpty) return false;
-
-      // Check if it's a valid image by trying to decode it
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      return frame.image.width > 0 && frame.image.height > 0;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<void> _pickImages() async {
-    try {
-      final images = await ImagePicker().pickMultiImage(imageQuality: 80);
-      if (images.isNotEmpty) {
-        // Show loading dialog while validating images
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder:
-                (context) => const AlertDialog(
-                  content: Row(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(width: 20),
-                      Text('Validating images...'),
-                    ],
-                  ),
-                ),
-          );
-        }
-
-        // Validate images before adding
-        final validImages = <XFile>[];
-        final invalidImageNames = <String>[];
-
-        for (final image in images) {
-          final isValid = await _validateImageFile(image);
-          if (isValid) {
-            validImages.add(image);
-          } else {
-            invalidImageNames.add(image.name);
-          }
-        }
-
-        // Close loading dialog
-        if (mounted) Navigator.of(context).pop();
-
-        if (validImages.isNotEmpty) {
-          setState(() => _pickedImages.addAll(validImages));
-        }
-
-        if (invalidImageNames.isNotEmpty && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Skipped ${invalidImageNames.length} invalid image(s): ${invalidImageNames.join(', ')}',
-              ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // Close loading dialog if it's open
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking images: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _takePicture() async {
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: ImageSource.camera);
-      if (pickedFile != null) {
-        // Show loading while validating
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder:
-                (context) => const AlertDialog(
-                  content: Row(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(width: 20),
-                      Text('Processing image...'),
-                    ],
-                  ),
-                ),
-          );
-        }
-
-        final isValid = await _validateImageFile(pickedFile);
-
-        // Close loading dialog
-        if (mounted) Navigator.of(context).pop();
-
-        if (isValid) {
-          setState(() => _pickedImages.add(pickedFile));
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Invalid image captured. Please try again.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      // Close loading dialog if it's open
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error taking picture: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _removeImage(int index) {
-    setState(() => _pickedImages.removeAt(index));
-  }
-
-  void _removeExistingImage(int index) {
-    setState(() => _existingImageUrls.removeAt(index));
-  }
-
-  // Helper method to check if a file is a video
-  bool _isVideoFile(XFile file) {
-    final extension = file.path.toLowerCase().split('.').last;
-    return extension == 'mp4' || extension == 'mov' || extension == 'avi';
-  }
-
-  // Show full-screen preview of selected media
-  void _previewMedia(ImageProvider imageProvider, {bool isVideo = false}) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder:
-          (context) => Dialog(
-            backgroundColor: Colors.transparent,
-            child: Stack(
-              children: [
-                Center(
-                  child: InteractiveViewer(
-                    panEnabled: true,
-                    boundaryMargin: const EdgeInsets.all(20),
-                    minScale: 0.5,
-                    maxScale: 4.0,
-                    child: Container(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.8,
-                        maxWidth: MediaQuery.of(context).size.width * 0.9,
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child:
-                            isVideo
-                                ? Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    Image(
-                                      image: imageProvider,
-                                      fit: BoxFit.contain,
-                                    ),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.5),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      padding: const EdgeInsets.all(16),
-                                      child: const Icon(
-                                        Icons.play_arrow,
-                                        color: Colors.white,
-                                        size: 48,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      bottom: 8,
-                                      left: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.7),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'VIDEO',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                                : Image(
-                                  image: imageProvider,
-                                  fit: BoxFit.contain,
-                                ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 40,
-                  right: 20,
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        shape: BoxShape.circle,
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-    );
-  }
-
-  // Upload new images and return their URLs
-  Future<List<String>> _uploadNewImages(String userId, String carId) async {
-    final newImageUrls = <String>[];
-
-    for (final imageFile in _pickedImages) {
-      final Uint8List imageBytes = await imageFile.readAsBytes();
-      final imageUrl = await _carService.uploadCarMedia(
-        userId,
-        carId,
-        imageBytes,
-      );
-      newImageUrls.add(imageUrl);
-    }
-
-    return newImageUrls;
-  }
-
-  // Create a new car
-  Future<void> _createCar() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final userId = Supabase.instance.client.auth.currentUser!.id;
-      final carId = _uuid.v4();
-
-      // Upload new images
-      final newImageUrls = await _uploadNewImages(userId, carId);
-
-      final carData = Car(
-        id: carId,
-        ownerId: userId,
-        make: _makeController.text.trim(),
-        model: _modelController.text.trim(),
-        year: int.parse(_yearController.text),
-        mileage: double.parse(_mileageController.text).toInt(),
-        location: _locationController.text.trim(),
-        contact: _contactController.text.trim(),
-        description: _descriptionController.text.trim(),
-        fuelType: _selectedFuelType,
-        transmission: _selectedTransmission,
-        forSale: _isForSale,
-        isPublic: true,
-        isAvailable: true,
-        createdAt: DateTime.now(),
-        mediaUrls: newImageUrls,
-        salePrice:
-            _isForSale ? double.tryParse(_salePriceController.text) : null,
-        bookingRatePerDay:
-            !_isForSale ? double.tryParse(_bookingRateController.text) : null,
-      );
-
-      await _carService.createCar(carData);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Car listed successfully!')),
-        );
-        context.pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error creating car: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _updateCar() async {
     if (!_formKey.currentState!.validate()) return;
     if (_existingCar == null) return;
@@ -527,7 +346,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
           originalMediaUrls.difference(currentMediaUrls).toList();
 
       // Upload new images and combine with existing ones
-      final newImageUrls = await _uploadNewImages(userId, _existingCar!.id);
+      final newImageUrls = await uploadNewImages(userId, _existingCar!.id);
       final allImageUrls = [..._existingImageUrls, ...newImageUrls];
 
       final updatedCarData = Car(
@@ -579,7 +398,6 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     }
   }
 
-  // Main submit handler - delegates to create or update
   void _handleSubmit() {
     if (_isEditMode) {
       _updateCar();
@@ -828,7 +646,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
-                                  onPressed: _pickImages,
+                                  onPressed: pickImages,
                                   icon: const Icon(Icons.photo_library),
                                   label: const Text('Choose from Gallery'),
                                   style: OutlinedButton.styleFrom(
@@ -844,7 +662,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: OutlinedButton.icon(
-                                  onPressed: _takePicture,
+                                  onPressed: takePicture,
                                   icon: const Icon(Icons.camera_alt),
                                   label: const Text('Take Photo'),
                                   style: OutlinedButton.styleFrom(
@@ -876,7 +694,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                     return _buildImageThumbnail(
                                       imageProvider: NetworkImage(url),
                                       onRemove:
-                                          () => _removeExistingImage(index),
+                                          () => removeExistingImage(index),
+                                      file: null,
                                     );
                                   }),
                                   // New picked images from local files
@@ -884,12 +703,11 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                     final index = entry.key;
                                     final image = entry.value;
                                     return _buildImageThumbnail(
-                                      imageProvider: FileImage(
-                                        File(image.path),
-                                      ),
-                                      onRemove: () => _removeImage(index),
-                                      file:
-                                          image, // Pass the file to detect video type
+                                      imageProvider: MemoryImage(
+                                        Uint8List(0),
+                                      ), // Dummy provider, will use FutureBuilder
+                                      onRemove: () => removeImage(index),
+                                      file: image,
                                     );
                                   }),
                                 ],
@@ -937,11 +755,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
-  Widget _buildSectionCard(
-    BuildContext context, {
-    required String title,
-    required List<Widget> children,
-  }) {
+  Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children}) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -964,12 +778,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
-  Widget _buildListingTypeToggle(
-    BuildContext context, {
-    required bool isDriver,
-    required bool isForSale,
-    required ValueChanged<bool> onChanged,
-  }) {
+  Widget _buildListingTypeToggle(BuildContext context, {required bool isDriver, required bool isForSale, required ValueChanged<bool> onChanged}) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -1060,15 +869,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
-  Widget _buildTextFormField({
-    required TextEditingController controller,
-    required String labelText,
-    String? hintText,
-    TextInputType? keyboardType,
-    int maxLines = 1,
-    String? Function(String?)? validator,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
+  Widget _buildTextFormField({required TextEditingController controller, required String labelText, String? hintText, TextInputType? keyboardType, int maxLines = 1, String? Function(String?)? validator, List<TextInputFormatter>? inputFormatters}) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
@@ -1095,12 +896,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
-  Widget _buildDropdownFormField<T>({
-    required T initialValue,
-    required String labelText,
-    required List<DropdownMenuItem<T>> items,
-    required void Function(T?) onChanged,
-  }) {
+  Widget _buildDropdownFormField<T>({required T initialValue, required String labelText, required List<DropdownMenuItem<T>> items, required void Function(T?) onChanged}) {
     return DropdownButtonFormField<T>(
       initialValue: initialValue,
       decoration: InputDecoration(
@@ -1124,14 +920,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
-  // Enhanced image thumbnail with error handling and tap-to-view
-  Widget _buildImageThumbnail({
-    required ImageProvider imageProvider,
-    required VoidCallback onRemove,
-    XFile? file,
-  }) {
-    final isVideo = file != null && _isVideoFile(file);
-
+  Widget _buildImageThumbnail({ImageProvider? imageProvider, required VoidCallback onRemove, XFile? file}) {
+  
     return Container(
       margin: const EdgeInsets.only(right: 12),
       width: 100,
@@ -1139,15 +929,19 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
       child: Stack(
         children: [
           GestureDetector(
-            onTap: () => _previewMedia(imageProvider, isVideo: isVideo),
+            onTap:
+                file != null
+                    ? () async {
+                      final bytes = await file.readAsBytes();
+                       previewMedia(MemoryImage(bytes), file);
+                    }
+                    : () => previewMedia(imageProvider!, null),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                children: [
-                  // Use FutureBuilder for better error handling with file images
+              child:
                   file != null
-                      ? FutureBuilder<bool>(
-                        future: _validateImageFile(file),
+                      ? FutureBuilder<Uint8List>(
+                        future: file.readAsBytes(),
                         builder: (context, snapshot) {
                           if (snapshot.connectionState ==
                               ConnectionState.waiting) {
@@ -1168,9 +962,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                 ),
                               ),
                             );
-                          }
-
-                          if (snapshot.hasError || snapshot.data == false) {
+                          } else if (snapshot.hasError ||
+                              snapshot.data == null) {
                             return Container(
                               width: 100,
                               height: 100,
@@ -1199,9 +992,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                               ),
                             );
                           }
-
-                          return Image.file(
-                            File(file.path),
+                          return Image.memory(
+                            snapshot.data!,
                             width: 100,
                             height: 100,
                             fit: BoxFit.cover,
@@ -1239,7 +1031,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                         },
                       )
                       : Image(
-                        image: imageProvider,
+                        image: imageProvider!,
                         width: 100,
                         height: 100,
                         fit: BoxFit.cover,
@@ -1274,44 +1066,6 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                           );
                         },
                       ),
-                  if (isVideo)
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.play_circle_fill,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                        ),
-                      ),
-                    ),
-                  // Tap indicator - only show for valid images
-                  if (file == null)
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.visibility,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
             ),
           ),
           Positioned(
@@ -1326,7 +1080,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(50),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 2,
                       offset: const Offset(1, 1),
                     ),
@@ -1340,4 +1094,5 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
       ),
     );
   }
+
 }

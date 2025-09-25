@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/car.dart';
 import '../../services/car_service.dart';
+import '../../services/media_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 
 class MyGaragePage extends StatefulWidget {
@@ -14,6 +15,7 @@ class MyGaragePage extends StatefulWidget {
 
 class _MyGaragePageState extends State<MyGaragePage> {
   late final CarService _carService;
+  late final MediaService _mediaService;
   List<Car> _cars = [];
   final Map<String, String?> _thumbnailCache = {};
   bool _isLoading = true;
@@ -54,7 +56,7 @@ class _MyGaragePageState extends State<MyGaragePage> {
       if (car.mediaUrls.isNotEmpty) {
         try {
           // Generate signed URL for just the first image (thumbnail)
-          final signedUrls = await _carService.getSignedMediaUrls([
+          final signedUrls = await _mediaService.getSignedMediaUrls([
             car.mediaUrls.first,
           ]);
           _thumbnailCache[car.id] =
@@ -316,4 +318,5 @@ class _MyGaragePageState extends State<MyGaragePage> {
       ),
     );
   }
+
 }

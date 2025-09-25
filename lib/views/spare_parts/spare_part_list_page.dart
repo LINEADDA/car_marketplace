@@ -39,7 +39,7 @@ class _SparePartListPageState extends State<SparePartListPage> {
       final user = Supabase.instance.client.auth.currentUser;
 
       if (widget.showMyParts && user != null) {
-        parts = await _sparePartService.getSparePartsForUser(user.id);
+        parts = await _sparePartService.getSparePartsByOwner(user.id);
       } else {
         parts = await _sparePartService.getAllSpareParts();
       }
