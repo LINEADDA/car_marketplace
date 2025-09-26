@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/spare_part.dart';
 import '../../services/spare_part_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
-import '../spare_parts/add_edit_spare_part_page.dart';
 
 class MySparePartsPage extends StatefulWidget {
   const MySparePartsPage({super.key});
@@ -90,11 +89,17 @@ class _MySparePartsPageState extends State<MySparePartsPage> {
     }
   }
 
-  void _navigateToAddEdit({SparePart? part}) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => AddEditSparePartPage(partId: part?.id)),
-    );
+  void _navigateToAddEdit() async {
+    await context.push('/spare-parts/add');
 
+    if (!mounted) return;
+    _loadParts();
+  }
+
+  void _navigateToEdit({SparePart? part}) async {
+    if (part?.id != null) {
+      context.push('/spare-parts/edit/${part!.id}');
+    }
     if (!mounted) return;
     _loadParts();
   }
@@ -161,7 +166,7 @@ class _MySparePartsPageState extends State<MySparePartsPage> {
                         trailing: PopupMenuButton<String>(
                           onSelected: (value) {
                             if (value == 'edit') {
-                              _navigateToAddEdit(part: part);
+                              _navigateToEdit(part: part);
                             } else if (value == 'delete') {
                               _deletePart(part.id);
                             }
@@ -210,4 +215,5 @@ class _MySparePartsPageState extends State<MySparePartsPage> {
       ),
     );
   }
+
 }

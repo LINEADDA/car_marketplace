@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/spare_part.dart';
 import '../../services/spare_part_service.dart';
+import '../../services/media_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
 
 class SparePartListPage extends StatefulWidget {
-  final bool showMyParts;
-
-  const SparePartListPage({super.key, this.showMyParts = false});
+  const SparePartListPage({super.key});
 
   @override
   State<SparePartListPage> createState() => _SparePartListPageState();
@@ -17,62 +17,82 @@ class SparePartListPage extends StatefulWidget {
 
 class _SparePartListPageState extends State<SparePartListPage> {
   late final SparePartService _sparePartService;
-  List<SparePart> _parts = [];
-  bool _isLoading = true;
-  String? _errorMessage;
+  late final MediaService _mediaService;
+
+  List<SparePart> _allSpareParts = [];
+  final Map<String, List<String>> _signedUrlsCache = {};
+  bool _isLoading = false;
+  String? _error;
+
   final String? currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
   @override
   void initState() {
     super.initState();
     _sparePartService = SparePartService(Supabase.instance.client);
-    _fetchParts();
+    _mediaService = MediaService.forSpareParts(Supabase.instance.client);
+    _loadSpareParts();
   }
 
-  Future<void> _fetchParts() async {
+  Future<void> _loadSpareParts() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _error = null;
     });
-    try {
-      List<SparePart> parts;
-      final user = Supabase.instance.client.auth.currentUser;
 
-      if (widget.showMyParts && user != null) {
-        parts = await _sparePartService.getSparePartsByOwner(user.id);
-      } else {
-        parts = await _sparePartService.getAllSpareParts();
-      }
+    try {
+      // Load all spare parts (single list as requested)
+      final allSpareParts = await _sparePartService.getAllSpareParts();
+
+      // Generate signed URLs for all spare parts
+      await _generateSignedUrls(allSpareParts);
 
       if (mounted) {
         setState(() {
-          _parts = parts;
+          _allSpareParts = allSpareParts;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = "Failed to load parts: $e";
+          _error = e.toString();
           _isLoading = false;
         });
       }
     }
   }
 
-  Future<void> _launchDialer(String number) async {
-    final Uri launchUri = Uri(scheme: 'tel', path: number);
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not launch dialer.')),
-        );
+  Future<void> _generateSignedUrls(List<SparePart> spareParts) async {
+    for (final part in spareParts) {
+      if (part.mediaUrls.isNotEmpty) {
+        try {
+          final signedUrls = await _mediaService.getSignedMediaUrls(
+            part.mediaUrls,
+          );
+          _signedUrlsCache[part.id] = signedUrls;
+        } catch (e) {
+          // If signing fails, use original URLs
+          _signedUrlsCache[part.id] = part.mediaUrls;
+        }
       }
     }
   }
 
+  /// Launch phone dialer
+  Future<void> _launchDialer(String number) async {
+    final Uri launchUri = Uri(scheme: 'tel', path: number);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not launch dialer.')));
+    }
+  }
+
+  /// Launch Google Maps location search
   Future<void> _launchMap(String location) async {
     final Uri launchUri = Uri.https('www.google.com', '/maps/search/', {
       'api': '1',
@@ -80,12 +100,10 @@ class _SparePartListPageState extends State<SparePartListPage> {
     });
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not open map.')));
-      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open map.')));
     }
   }
 
@@ -93,49 +111,49 @@ class _SparePartListPageState extends State<SparePartListPage> {
   Widget build(BuildContext context) {
     return ScaffoldWithNav(
       title: 'Spare Parts',
-      currentRoute: '/spare-parts',
-      body: _buildBody(),
-      floatingActionButton:
-          widget.showMyParts
-              ? FloatingActionButton(
-                onPressed: () => context.push('/spare-parts/add'),
-                child: const Icon(Icons.add),
-              )
-              : null,
+      currentRoute: '/spare-parts/browse',
+      body: _buildSparePartsList(_allSpareParts),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/spare-parts/add'),
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildSparePartsList(List<SparePart> spareParts) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_errorMessage != null) {
-      return Center(
-        child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-      );
-    }
 
-    if (_parts.isEmpty) {
-      final message =
-          widget.showMyParts
-              ? 'You have not listed any parts yet.'
-              : 'No spare parts are currently available.';
+    if (_error != null) {
       return Center(
-        child: Text(
-          message,
-          style: const TextStyle(fontSize: 16, color: Colors.grey),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Error: $_error', style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _loadSpareParts, child: const Text('Retry')),
+          ],
         ),
       );
     }
 
-    final myParts =
-        _parts.where((part) => part.ownerId == currentUserId).toList();
-    final otherParts =
-        _parts.where((part) => part.ownerId != currentUserId).toList();
+    if (spareParts.isEmpty) {
+      return const Center(
+        child: Text(
+          'No spare parts available',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+
+    // Put current user's parts first
+    final myParts = spareParts.where((part) => part.ownerId == currentUserId).toList();
+    final otherParts = spareParts.where((part) => part.ownerId != currentUserId).toList();
     final sortedParts = [...myParts, ...otherParts];
 
     return RefreshIndicator(
-      onRefresh: _fetchParts,
+      onRefresh: _loadSpareParts,
       child: ListView.builder(
         padding: const EdgeInsets.all(16.0),
         itemCount: sortedParts.length,
@@ -143,6 +161,15 @@ class _SparePartListPageState extends State<SparePartListPage> {
           final part = sortedParts[index];
           final isMyPart = part.ownerId == currentUserId;
           final theme = Theme.of(context);
+          final currencyFormatter = NumberFormat.currency(
+            locale: 'en_IN',
+            symbol: '',
+            decimalDigits: 0,
+          );
+
+          // Get signed URLs for this spare part
+          final signedUrls = _signedUrlsCache[part.id] ?? [];
+          final firstImageUrl = signedUrls.isNotEmpty ? signedUrls.first : null;
 
           return Card(
             elevation: isMyPart ? 6 : 2,
@@ -164,7 +191,7 @@ class _SparePartListPageState extends State<SparePartListPage> {
                 ),
                 child: Row(
                   children: [
-                    _buildPartImage(part.mediaUrls.firstOrNull),
+                    _buildSparePartImage(firstImageUrl),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
@@ -177,6 +204,13 @@ class _SparePartListPageState extends State<SparePartListPage> {
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Condition: ${part.condition.name.toUpperCase()}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.green[600],
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 8,
@@ -184,8 +218,7 @@ class _SparePartListPageState extends State<SparePartListPage> {
                             children: [
                               _buildInfoChip(
                                 Icons.currency_rupee_rounded,
-                                part.price.toStringAsFixed(0),
-                                onTap: null,
+                                currencyFormatter.format(part.price),
                               ),
                               _buildInfoChip(
                                 Icons.location_on_outlined,
@@ -199,10 +232,6 @@ class _SparePartListPageState extends State<SparePartListPage> {
                               ),
                             ],
                           ),
-                          if (isMyPart) ...[
-                            const SizedBox(height: 8),
-                            // Tag removed as requested
-                          ],
                         ],
                       ),
                     ),
@@ -221,12 +250,12 @@ class _SparePartListPageState extends State<SparePartListPage> {
     );
   }
 
-  Widget _buildPartImage(String? imageUrl) {
+  Widget _buildSparePartImage(String? imageUrl) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 80,
-        height: 80,
+        width: 100,
+        height: 75,
         color: Colors.grey.shade200,
         child:
             imageUrl != null && imageUrl.isNotEmpty
@@ -250,28 +279,25 @@ class _SparePartListPageState extends State<SparePartListPage> {
   }
 
   Widget _buildInfoChip(IconData icon, String label, {VoidCallback? onTap}) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary,
+          color: theme.colorScheme.primary,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: Theme.of(context).colorScheme.onPrimary,
-            ),
+            Icon(icon, size: 16, color: theme.colorScheme.onPrimary),
             const SizedBox(width: 4),
             Flexible(
               child: Text(
                 label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onPrimary,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onPrimary,
                   fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -282,4 +308,5 @@ class _SparePartListPageState extends State<SparePartListPage> {
       ),
     );
   }
+  
 }

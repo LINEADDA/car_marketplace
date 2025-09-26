@@ -203,7 +203,7 @@ class MediaService {
     return false; 
   }
 
-  void previewMedia(BuildContext context, ImageProvider imageProvider, {bool isVideo = false}) {
+  void previewMedia(BuildContext context, ImageProvider imageProvider, XFile? file, {bool isVideo = false}) {
     showDialog(
       context: context,
       barrierDismissible: true,

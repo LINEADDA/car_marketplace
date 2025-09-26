@@ -31,12 +31,8 @@ class _CarDetailPageState extends State<CarDetailPage> {
   bool _isLoading = true;
   String? _errorMessage;
 
-  String get _carTitle =>
-      _car != null
-          ? '${_car!.year} ${_car!.make} ${_car!.model}'
-          : 'Car Details';
-  bool get _isOwner =>
-      _car?.ownerId == Supabase.instance.client.auth.currentUser?.id;
+  String get _carTitle => _car != null ? '${_car!.year} ${_car!.make} ${_car!.model}' : 'Car Details';
+  bool get _isOwner => _car?.ownerId == Supabase.instance.client.auth.currentUser?.id;
 
   @override
   void initState() {
@@ -91,7 +87,6 @@ class _CarDetailPageState extends State<CarDetailPage> {
     }
   }
 
-  // Full-screen media viewer
   void _showFullScreenMedia(List<String> mediaUrls) {
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -278,16 +273,6 @@ class _CarDetailPageState extends State<CarDetailPage> {
                 const SizedBox(height: 16),
                 const Divider(),
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.description_outlined),
-                  title: const Text('Description'),
-                  subtitle: Text(
-                    car.description.isNotEmpty
-                        ? car.description
-                        : 'No description provided.',
-                  ),
-                ),
-                ListTile(
                   onTap: () => _launchMap(car.location),
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.location_on_outlined),
@@ -320,6 +305,17 @@ class _CarDetailPageState extends State<CarDetailPage> {
                               ? Theme.of(context).colorScheme.primary
                               : Colors.grey,
                     ),
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Description'),
+                  subtitle: Text(
+                    car.description.isNotEmpty
+                        ? car.description
+                        : 'No description provided.',
                   ),
                 ),
                 const SizedBox(height: 24),

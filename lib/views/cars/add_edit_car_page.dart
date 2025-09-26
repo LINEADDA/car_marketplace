@@ -24,7 +24,7 @@ class AddEditCarPage extends StatefulWidget {
 class _AddEditCarPageState extends State<AddEditCarPage> {
   final _formKey = GlobalKey<FormState>();
   late final CarService _carService;
-  final _uuid = const Uuid();
+  late final MediaService _mediaService;
 
   final _makeController = TextEditingController();
   final _modelController = TextEditingController();
@@ -42,10 +42,10 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   String? _userRole;
   Car? _existingCar;
 
-  late final MediaService mediaService;
   final List<XFile> _pickedImages = [];
   late List<String> _existingImageUrls;
   bool _isLoading = false;
+
 
   // Determine if we're editing or creating based on carId
   bool get _isEditMode => widget.carId != null && _existingCar != null;
@@ -54,7 +54,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
   void initState() {
     super.initState();
     _carService = CarService(Supabase.instance.client);
-    mediaService = MediaService.forCars(Supabase.instance.client);
+    _mediaService = MediaService.forCars(Supabase.instance.client);
     _fetchUserRole();
 
     if (widget.initialListingType != null) {
@@ -81,7 +81,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     _bookingRateController.dispose();
     super.dispose();
   }
-
+  
+  //// Helper methods for media_service file
   void _showSnackBar(String message, {Color? backgroundColor}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -129,60 +130,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     onHideLoading: _hideLoadingDialog,
   );
 
-  Future<bool> validateImageFile(XFile file) async{
-    return await mediaService.validateImageFile(file);
-  }
-
-  Future<void> pickImages() async {
-    await mediaService.pickImages(context, _callbacks);
-  }
-
-  Future<void> takePicture() async {
-    await mediaService.takePicture(context, _callbacks);
-  }
-
-  void removeImage(int index) {
-    mediaService.removeFile(index, _callbacks);
-  }
-
-  void removeExistingImage(int index) {
-    mediaService.removeExistingFile(index, _callbacks);
-  }
-
-  void previewMedia(ImageProvider imageProvider, XFile? file) {
-    final isVideo = file != null ? mediaService.isVideoFile(file) : false;
-    mediaService.previewMedia(context, imageProvider, isVideo: isVideo);
-  }
-
-  Future<List<String>> uploadNewImages(String userId, String itemId) async {
-    final newImageUrls = <String>[];
-
-    for (final imageFile in _pickedImages) {
-      try {
-        final imageBytes = await imageFile.readAsBytes();
-        final imageUrl = await mediaService.uploadMedia(
-          userId,
-          itemId,
-          imageBytes,
-        );
-        newImageUrls.add(imageUrl);
-      } catch (e) {
-        _showSnackBar(
-          'Failed to upload ${imageFile.name}: $e',
-          backgroundColor: Colors.red,
-        );
-      }
-    }
-
-    return newImageUrls;
-  }
-
-  Future<List<String>> getSignedUrls(List<String> urls) async {
-    return await mediaService.getSignedMediaUrls(urls);
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////
-
+  //// Below are unique car related methods
   Future<void> _createCar() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -190,7 +138,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
 
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
-      final carId = _uuid.v4();
+      final carId = const Uuid().v4();
 
       // Upload new images
       final newImageUrls = await uploadNewImages(userId, carId);
@@ -240,13 +188,36 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     }
   }
 
+  Future<List<String>> uploadNewImages(String userId, String itemId) async {
+    final newImageUrls = <String>[];
+
+    for (final imageFile in _pickedImages) {
+      try {
+        final imageBytes = await imageFile.readAsBytes();
+        final imageUrl = await _mediaService.uploadMedia(
+          userId,
+          itemId,
+          imageBytes,
+        );
+        newImageUrls.add(imageUrl);
+      } catch (e) {
+        _showSnackBar(
+          'Failed to upload ${imageFile.name}: $e',
+          backgroundColor: Colors.red,
+        );
+      }
+    }
+
+    return newImageUrls;
+  }
+
   Future<void> _loadCarForEdit(String carId) async {
     setState(() => _isLoading = true);
 
     try {
       final car = await _carService.getCarById(carId);
       if (car != null && mounted) {
-        final signedUrls = await getSignedUrls(car.mediaUrls);
+        final signedUrls = await _mediaService.getSignedMediaUrls(car.mediaUrls);
 
         setState(() {
           _existingCar = car;
@@ -398,6 +369,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     }
   }
 
+  //// Below 2 methods can be made re-useable
   void _handleSubmit() {
     if (_isEditMode) {
       _updateCar();
@@ -640,13 +612,13 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                       const SizedBox(height: 16),
                       _buildSectionCard(
                         context,
-                        title: 'Images',
+                        title: 'Images (Optional)',
                         children: [
                           Row(
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
-                                  onPressed: pickImages,
+                                  onPressed: () => _mediaService.pickImages(context, _callbacks),
                                   icon: const Icon(Icons.photo_library),
                                   label: const Text('Choose from Gallery'),
                                   style: OutlinedButton.styleFrom(
@@ -662,7 +634,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: OutlinedButton.icon(
-                                  onPressed: takePicture,
+                                  onPressed: () => _mediaService.takePicture(context, _callbacks),
                                   icon: const Icon(Icons.camera_alt),
                                   label: const Text('Take Photo'),
                                   style: OutlinedButton.styleFrom(
@@ -685,7 +657,6 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                               child: ListView(
                                 scrollDirection: Axis.horizontal,
                                 children: [
-                                  // Existing images from network
                                   ..._existingImageUrls.asMap().entries.map((
                                     entry,
                                   ) {
@@ -694,19 +665,18 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                                     return _buildImageThumbnail(
                                       imageProvider: NetworkImage(url),
                                       onRemove:
-                                          () => removeExistingImage(index),
+                                          () => _mediaService.removeExistingFile(index, _callbacks),
                                       file: null,
                                     );
                                   }),
-                                  // New picked images from local files
                                   ..._pickedImages.asMap().entries.map((entry) {
                                     final index = entry.key;
                                     final image = entry.value;
                                     return _buildImageThumbnail(
                                       imageProvider: MemoryImage(
                                         Uint8List(0),
-                                      ), // Dummy provider, will use FutureBuilder
-                                      onRemove: () => removeImage(index),
+                                      ),
+                                      onRemove: () => _mediaService.removeFile(index, _callbacks),
                                       file: image,
                                     );
                                   }),
@@ -754,7 +724,9 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
               ),
     );
   }
-
+  
+  // Below all methods can be made re-useable
+  // Helpful in created separate parts
   Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children}) {
     return Card(
       elevation: 4,
@@ -778,6 +750,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
+  // Toggle for Cars for Sale VS Cars for Bookings
   Widget _buildListingTypeToggle(BuildContext context, {required bool isDriver, required bool isForSale, required ValueChanged<bool> onChanged}) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -869,6 +842,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
+  // For building consistent text input fields 
   Widget _buildTextFormField({required TextEditingController controller, required String labelText, String? hintText, TextInputType? keyboardType, int maxLines = 1, String? Function(String?)? validator, List<TextInputFormatter>? inputFormatters}) {
     return TextFormField(
       controller: controller,
@@ -895,7 +869,8 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
       validator: validator,
     );
   }
-
+  
+  // Dropdown List
   Widget _buildDropdownFormField<T>({required T initialValue, required String labelText, required List<DropdownMenuItem<T>> items, required void Function(T?) onChanged}) {
     return DropdownButtonFormField<T>(
       initialValue: initialValue,
@@ -920,6 +895,7 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
     );
   }
 
+  // As name suggests, Builds thumbnails for selected images
   Widget _buildImageThumbnail({ImageProvider? imageProvider, required VoidCallback onRemove, XFile? file}) {
   
     return Container(
@@ -933,9 +909,10 @@ class _AddEditCarPageState extends State<AddEditCarPage> {
                 file != null
                     ? () async {
                       final bytes = await file.readAsBytes();
-                       previewMedia(MemoryImage(bytes), file);
+                      if (!mounted) return;
+                       _mediaService.previewMedia(context, MemoryImage(bytes), file, isVideo: false);
                     }
-                    : () => previewMedia(imageProvider!, null),
+                    : () => _mediaService.previewMedia(context, imageProvider!, null, isVideo: false),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child:
