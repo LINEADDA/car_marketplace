@@ -117,7 +117,7 @@ class MyApp extends StatelessWidget {
                     AddEditRepairShopPage(shopId: state.pathParameters['id']!),
           ),
           GoRoute(
-            path: '/service-detail',
+            path: '/service-detail/:id',
             builder: (context, state) {
               final service = state.pathParameters['id']!;
               return ServiceDetailPage(serviceId: service);

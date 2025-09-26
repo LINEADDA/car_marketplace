@@ -36,6 +36,7 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
   bool _isSubmitting = false;
   bool _isLoading = false;
   String? _errorMessage;
+  SparePart? _existingPart;
 
   final List<XFile> _pickedImages = [];
   late List<String> _existingImageUrls;
@@ -135,10 +136,23 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
         throw Exception('You must be logged in to submit a part.');
       }
 
-      final userId = Supabase.instance.client.auth.currentUser!.id; 
+      final userId = Supabase.instance.client.auth.currentUser!.id;
       final partId = widget.isEditMode ? widget.partId! : const Uuid().v4();
 
-      final newImageUrls = await uploadNewImages(userId, partId);
+      List<String> removedMediaUrls = [];
+      List<String> allImageUrls = [];
+
+      if (widget.isEditMode && _existingPart != null) {
+        final originalMediaUrls = _existingPart!.mediaUrls.toSet();
+        final currentMediaUrls = _existingImageUrls.toSet();
+        removedMediaUrls = originalMediaUrls.difference(currentMediaUrls).toList();
+
+        final newImageUrls = await uploadNewImages(userId, partId);
+        allImageUrls = [..._existingImageUrls, ...newImageUrls];
+      } else {
+        final newImageUrls = await uploadNewImages(userId, partId);
+        allImageUrls = newImageUrls;
+      }
 
       final partData = SparePart(
         id: partId,
@@ -147,14 +161,18 @@ class _AddEditSparePartPageState extends State<AddEditSparePartPage> {
         description: _descriptionController.text.trim(),
         price: double.parse(_priceController.text.trim()),
         condition: _selectedCondition,
-        mediaUrls: newImageUrls,
+        mediaUrls: allImageUrls, 
         contact: _contactController.text.trim(),
         location: _locationController.text.trim(),
-        createdAt: DateTime.now(),
+        createdAt:
+            widget.isEditMode ? _existingPart!.createdAt : DateTime.now(),
       );
 
       if (widget.isEditMode) {
-        await _sparePartService.updateSparePart(partData);
+        await _sparePartService.updateSparePart(
+          partData,
+          removedMediaUrls: removedMediaUrls,
+        );
       } else {
         await _sparePartService.createSparePart(partData);
       }

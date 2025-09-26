@@ -7,8 +7,10 @@ import '../services/media_service.dart';
 class CarService {
   final SupabaseClient _client;
   late final MediaService mediaService;
-
-  CarService(this._client);
+  
+  CarService(this._client) {
+    mediaService = MediaService.forCars(_client);
+  }
 
   Future<void> updateCarVisibility(String carId, bool isAvailable) async {
     try {
@@ -124,12 +126,10 @@ class CarService {
 
   Future<void> updateCar(Car car, {List<String>? removedMediaUrls}) async {
     try {
-      // First, delete any media files that were removed during editing
       if (removedMediaUrls != null && removedMediaUrls.isNotEmpty) {
         await mediaService.deleteSpecificMediaFiles(removedMediaUrls);
       }
 
-      // Then update the car record
       await _client.from('cars').update(car.toMap()).eq('id', car.id);
     } catch (e) {
       throw Exception('Error updating car: $e');
@@ -138,14 +138,11 @@ class CarService {
 
   Future<void> deleteCar(String id) async {
     try {
-      // First, get the car to extract media info
       final car = await getCarById(id);
       if (car != null) {
-        // Delete associated media files
         await mediaService.deleteMedia(car.ownerId, car.id);
       }
 
-      // Then delete the car record
       await _client.from('cars').delete().eq('id', id);
     } catch (e) {
       throw Exception('Error deleting car: $e');

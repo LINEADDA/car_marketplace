@@ -1,123 +1,173 @@
-import 'dart:io';
+// ignore_for_file: avoid_print
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/repair_shop.dart';
+import 'media_service.dart';
 
 class RepairShopService {
   final SupabaseClient _client;
-
-  RepairShopService(this._client);
-
-  // Fetches ALL repair shops for the public listing (no RLS for shop services here)
-  Future<List<RepairShop>> getAllPublicRepairShops() async {
-    final response = await _client.from('repair_shops').select();
-    final data = response as List;
-    return data.map((item) => RepairShop.fromMap(item)).toList();
+  late final MediaService mediaService;
+  
+  RepairShopService(this._client) {
+    mediaService = MediaService.forRepairShops(_client);
   }
 
-  // Creates a new repair shop (media_urls is handled separately)
-  Future<Map<String, dynamic>> createRepairShop(
-    Map<String, dynamic> shopData,
-  ) async {
-    shopData.remove('id'); // Ensure ID is not sent for new creation
-    final response =
-        await _client.from('repair_shops').insert(shopData).select().single();
-    return response;
-  }
+  Future<void> createRepairShop(RepairShop shop) async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
 
-  // Updates an existing repair shop
-  Future<void> updateRepairShop(RepairShop shop) async {
-    // When updating, we convert the ShopService list back to a list of maps (JSONB)
-    await _client.from('repair_shops').update(shop.toMap()).eq('id', shop.id);
-  }
-
-  // Uploads shop media files (remains largely the same)
-  Future<String> uploadShopMediaFile(
-    String userId,
-    String shopId,
-    File file,
-  ) async {
-    final path = '$userId/$shopId/${DateTime.now().millisecondsSinceEpoch}.jpg';
-    await _client.storage.from('repair_shop_media').upload(path, file);
-    return _client.storage.from('repair_shop_media').getPublicUrl(path);
-  }
-
-  // Updates ONLY the media URLs for a shop (useful after initial creation)
-  Future<void> updateShopMedia(String shopId, List<String> mediaUrls) async {
-    await _client
-        .from('repair_shops')
-        .update({'media_urls': mediaUrls}).eq('id', shopId);
-  }
-
-  // Fetches a single repair shop by its ID (for detail view)
-  // This now directly uses the ShopService list from the JSONB column
-  Future<RepairShop> getRepairShopById(String shopId) async {
-    final response =
-        await _client.from('repair_shops').select().eq('id', shopId).single();
-    return RepairShop.fromMap(response);
-  }
-
-  // Fetches a repair shop for a specific owner (for 'My Repair Shop' page)
-  // This also directly uses the ShopService list from the JSONB column
-  Future<RepairShop?> getShopForOwner(String ownerId) async {
-    final response =
-        await _client
-            .from('repair_shops')
-            .select()
-            .eq('owner_id', ownerId)
-            .maybeSingle();
-    if (response == null) {
-      return null;
-    }
-    return RepairShop.fromMap(response);
-  }
-
-  Future<List<RepairShop>> getShopsByOwnerId(String ownerId) async {
-    final response = await _client
-        .from('repair_shops')
-        .select()
-        .eq('owner_id', ownerId);
-    final data = response as List;
-    return data.map((item) => RepairShop.fromMap(item)).toList();
-  }
-
-  /// Deletes an entire repair shop, including all associated files in storage.
-  Future<void> deleteRepairShop(String shopId, String ownerId) async {
     try {
-      final folderPath = '$ownerId/$shopId';
-      final filesInFolder = await _client.storage.from('repair_shop_media').list(path: folderPath);
+      await _client.from('repair_shops').insert(shop.toMap());
+    } catch (e) {
+      throw Exception('Error creating repair shop: $e');
+    }
+  }
 
-      if (filesInFolder.isNotEmpty) {
-        final pathsToRemove = filesInFolder.map((file) => '$folderPath/${file.name}').toList();
-        await _client.storage.from('repair_shop_media').remove(pathsToRemove);
+  Future<RepairShop?> getRepairShopById(String shopId) async {
+    try {
+      final response =
+          await _client
+              .from('repair_shops')
+              .select()
+              .eq('id', shopId)
+              .maybeSingle();
+
+      if (response == null) return null;
+      return RepairShop.fromMap(response);
+    } catch (e) {
+      throw Exception('Error fetching repair shop by ID: $e');
+    }
+  }
+
+  Future<List<RepairShop>> getAllPublicRepairShops() async {
+    try {
+      final response = await _client.from('repair_shops').select();
+      return (response as List)
+          .map((item) => RepairShop.fromMap(item))
+          .toList();
+    } catch (e) {
+      throw Exception('Error fetching public repair shops: $e');
+    }
+  }
+
+  Future<List<RepairShop>> getShopsByOwner([String? userId]) async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+    final ownerId = userId ?? user.id;
+
+    try {
+      final response = await _client
+          .from('repair_shops')
+          .select()
+          .eq('owner_id', ownerId)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((item) => RepairShop.fromMap(item))
+          .toList();
+    } catch (e) {
+      throw Exception('Error fetching shops by owner: $e');
+    }
+  }
+  
+  Future<void> updateRepairShop(RepairShop shop, {List<String>? removedMediaUrls}) async {
+    try {
+      if (removedMediaUrls != null && removedMediaUrls.isNotEmpty) {
+        await mediaService.deleteSpecificMediaFiles(removedMediaUrls);
+      }
+
+      await _client.from('repair_shops').update(shop.toMap()).eq('id', shop.id);
+    } catch (e) {
+      throw Exception('Error updating repair shop: $e');
+    }
+  }
+
+  Future<void> deleteRepairShop(String shopId) async {
+    try {
+      final shop = await getRepairShopById(shopId);
+      if (shop != null) {
+        await mediaService.deleteMedia(shop.ownerId, shop.id);
       }
 
       await _client.from('repair_shops').delete().eq('id', shopId);
-      
     } catch (e) {
-      rethrow;
+      throw Exception('Error deleting repair shop: $e');
+    }
+  }
+
+  Future<void> updateShopService(String shopId, Map<String, dynamic> service) async {
+    try {
+      final shopData =
+          await _client
+              .from('repair_shops')
+              .select('services')
+              .eq('id', shopId)
+              .single();
+
+      final currentServices = List<Map<String, dynamic>>.from(
+        shopData['services'] ?? [],
+      );
+
+      // Find existing service by ID or add new one
+      final existingIndex = currentServices.indexWhere(
+        (s) => s['id'] == service['id'],
+      );
+
+      if (existingIndex != -1) {
+        // Update existing service
+        currentServices[existingIndex] = service;
+      } else {
+        // Add new service
+        currentServices.add(service);
+      }
+
+      await _client
+          .from('repair_shops')
+          .update({'services': currentServices})
+          .eq('id', shopId);
+    } catch (e) {
+      throw Exception('Error updating shop service: $e');
     }
   }
 
   Future<void> deleteShopService(String shopId, String serviceId) async {
     try {
+      final shopData =
+          await _client
+              .from('repair_shops')
+              .select('services')
+              .eq('id', shopId)
+              .single();
 
-      final shopData = await _client
-          .from('repair_shops')
-          .select('services')
-          .eq('id', shopId)
-          .single();
-      
-      final currentServices = List<Map<String, dynamic>>.from(shopData['services'] ?? []);
+      final currentServices = List<Map<String, dynamic>>.from(
+        shopData['services'] ?? [],
+      );
 
+      // Remove service with matching ID
       currentServices.removeWhere((service) => service['id'] == serviceId);
 
       await _client
           .from('repair_shops')
           .update({'services': currentServices})
           .eq('id', shopId);
-
     } catch (e) {
-      rethrow;
+      throw Exception('Error deleting shop service: $e');
     }
   }
+
+  Future<List<Map<String, dynamic>>> getShopServices(String shopId) async {
+    try {
+      final shopData =
+          await _client
+              .from('repair_shops')
+              .select('services')
+              .eq('id', shopId)
+              .single();
+
+      return List<Map<String, dynamic>>.from(shopData['services'] ?? []);
+    } catch (e) {
+      throw Exception('Error fetching shop services: $e');
+    }
+  }
+
 }

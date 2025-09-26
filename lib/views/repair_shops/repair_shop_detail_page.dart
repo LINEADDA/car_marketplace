@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/repair_shop.dart';
 import '../../services/repair_shop_service.dart';
+import '../../services/media_service.dart';
 import '../../widgets/app_scaffold_with_nav.dart';
-import 'add_edit_repair_shop_page.dart';
-import 'service_detail_page.dart';
+import '../../widgets/media_carousel.dart';
+import '../../widgets/full_screen_media_viewer.dart';
 
 class RepairShopDetailPage extends StatefulWidget {
   final String shopId;
@@ -17,26 +19,38 @@ class RepairShopDetailPage extends StatefulWidget {
 
 class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
   late final RepairShopService _repairShopService;
+  late final MediaService _mediaService;
+  
   RepairShop? _shop;
+  List<String> _signedMediaUrls = [];
   bool _isLoading = true;
   String? _errorMessage;
+  
+  bool get _isOwner => _shop?.ownerId == Supabase.instance.client.auth.currentUser?.id;
 
   @override
   void initState() {
     super.initState();
     _repairShopService = RepairShopService(Supabase.instance.client);
+    _mediaService = MediaService.forRepairShops(Supabase.instance.client);
     _fetchShopDetails();
   }
 
   Future<void> _fetchShopDetails() async {
     if (!mounted) return;
-
+    
     setState(() => _isLoading = true);
     try {
       final shop = await _repairShopService.getRepairShopById(widget.shopId);
+      if (shop == null) throw Exception('Shop not found.');
+      
+      // Generate signed URLs for media
+      final signedUrls = await _mediaService.getSignedMediaUrls(shop.mediaUrls);
+      
       if (mounted) {
         setState(() {
           _shop = shop;
+          _signedMediaUrls = signedUrls;
           _isLoading = false;
         });
       }
@@ -50,45 +64,62 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
     }
   }
 
-  bool get _isOwner =>
-      _shop?.ownerId == Supabase.instance.client.auth.currentUser?.id;
+  void _showFullScreenMedia(List<String> mediaUrls) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FullScreenMediaViewer(mediaUrls: mediaUrls, initialIndex: 0),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+        barrierDismissible: true,
+        opaque: false,
+      ),
+    );
+  }
 
-  Future<void> _handleDeleteShop(RepairShop shop) async {
+  Future<void> _handleDeleteShop() async {
+    if (_shop == null) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Delete Shop?'),
-            content: Text(
-              'Are you sure you want to permanently delete "${shop.name}" and all its data? This cannot be undone.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Delete'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Shop'),
+        content: Text('Are you sure you want to permanently delete "${_shop!.name}" and all its data? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
 
     if (confirmed == true) {
       try {
-        await _repairShopService.deleteRepairShop(shop.id, shop.ownerId);
+        await _repairShopService.deleteRepairShop(_shop!.id);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Shop deleted successfully')),
           );
-          Navigator.of(context).pop(); // Go back to the previous screen
+          context.go('/repair-shops');
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.redAccent,
+            ),
           );
         }
       }
@@ -117,19 +148,11 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
       await launchUrl(launchUri);
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not open map.')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Could not open map.')));
       }
     }
   }
-
-  // void _navigateToServiceDetail({service? service}) async {
-  //   await context.push('/service-detail', extra: service);
-
-  //   if (!mounted) return;
-  //   _fetchShopDetails();
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -141,16 +164,7 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit Shop',
-            onPressed: () {
-              Navigator.of(context)
-                  .push(
-                    MaterialPageRoute(
-                      builder:
-                          (context) => AddEditRepairShopPage(shopId: _shop!.id),
-                    ),
-                  )
-                  .then((_) => _fetchShopDetails());
-            },
+            onPressed: () => context.push('/repair-shops/edit/${_shop!.id}'),
           ),
           IconButton(
             icon: const Icon(
@@ -158,7 +172,7 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
               color: Colors.redAccent,
             ),
             tooltip: 'Delete Shop',
-            onPressed: () => _handleDeleteShop(_shop!),
+            onPressed: _handleDeleteShop,
           ),
         ],
       ],
@@ -168,49 +182,48 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
 
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
+    
     if (_errorMessage != null) {
       return Center(
-        child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+        child: Text(_errorMessage!,
+            style: const TextStyle(color: Colors.red, fontSize: 16)),
       );
     }
-    if (_shop == null) return const Center(child: Text('Shop not found.'));
+
+    if (_shop == null) {
+      return const Center(
+          child: Text('Repair shop not found.', style: TextStyle(fontSize: 16)));
+    }
 
     final shop = _shop!;
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (shop.mediaUrls.isNotEmpty)
-            SizedBox(
-              height: 250,
-              child: PageView.builder(
-                itemCount: shop.mediaUrls.length,
-                itemBuilder:
-                    (context, index) => Image.network(
-                      shop.mediaUrls[index],
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (context, error, stack) => const Icon(
-                            Icons.broken_image,
-                            size: 100,
-                            color: Colors.grey,
-                          ),
+          // Media Carousel
+          shop.mediaUrls.isNotEmpty
+              ? MediaCarousel(
+                  mediaUrls: _signedMediaUrls,
+                  onFullScreen: () => _showFullScreenMedia(_signedMediaUrls),
+                )
+              : Container(
+                  height: 250,
+                  color: Colors.grey[300],
+                  child: const Center(
+                    child: Icon(
+                      Icons.home_repair_service,
+                      size: 100,
+                      color: Colors.grey,
                     ),
-              ),
-            )
-          else
-            Container(
-              height: 250,
-              color: Colors.grey[300],
-              child: const Center(
-                child: Icon(Icons.store, size: 100, color: Colors.grey),
-              ),
-            ),
+                  ),
+                ),
+          
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Shop Name
                 Text(
                   shop.name,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -218,6 +231,31 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
+                
+                // Pricing Info (if available)
+                if (shop.pricingInfo.isNotEmpty) ...[
+                  Text(
+                    shop.pricingInfo,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // Services Chip (if available)
+                if (shop.services.isNotEmpty) ...[
+                  _buildSpecChip(
+                    Icons.build_circle_outlined,
+                    '${shop.services.length} Services',
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                const Divider(),
+
+                // Location
                 ListTile(
                   onTap: () => _launchMap(shop.location),
                   contentPadding: EdgeInsets.zero,
@@ -230,6 +268,8 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                     ),
                   ),
                 ),
+
+                // Contact
                 ListTile(
                   onTap: () {
                     if (shop.contactNumber.isNotEmpty) {
@@ -240,33 +280,29 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                   leading: const Icon(Icons.phone_outlined),
                   title: const Text('Contact'),
                   subtitle: Text(
-                    shop.contactNumber,
+                    shop.contactNumber.isNotEmpty
+                        ? shop.contactNumber
+                        : 'Not available',
                     style: TextStyle(
-                      decoration:
-                          shop.contactNumber.isNotEmpty
-                              ? TextDecoration.underline
-                              : TextDecoration.none,
-                      color:
-                          shop.contactNumber.isNotEmpty
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey,
+                      decoration: shop.contactNumber.isNotEmpty
+                          ? TextDecoration.underline
+                          : TextDecoration.none,
+                      color: shop.contactNumber.isNotEmpty
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey,
                     ),
                   ),
                 ),
-                if (shop.pricingInfo.isNotEmpty)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.price_change_outlined),
-                    title: const Text('Pricing'),
-                    subtitle: Text(shop.pricingInfo),
-                  ),
-                const SizedBox(height: 16),
+
                 const Divider(),
+
+                // Services Section
                 Text(
                   'Services Offered',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
+                
                 if (shop.services.isEmpty)
                   const Text('No specific services listed.')
                 else
@@ -276,25 +312,39 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
                     itemCount: shop.services.length,
                     itemBuilder: (context, index) {
                       final service = shop.services[index];
-                      final serviceId = service.id;
                       return ListTile(
-                        title: Text(
-                          service.price != null
-                              ? '${service.name} - ₹${service.price?.toStringAsFixed(2)}'
-                              : service.name,
-                        ),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder:
-                                  (context) =>
-                                      ServiceDetailPage(serviceId: serviceId),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.build_outlined),
+                        title: Text(service.name),
+                        subtitle:
+                            service.description.isNotEmpty
+                                ? Text(service.description)
+                                : null,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (service.price != null)
+                              Text(
+                                '₹${service.price?.toStringAsFixed(0)}',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.grey,
+                              size: 16,
                             ),
-                          );
-                        },
+                          ],
+                        ),
+                        onTap:
+                            () => context.push('/service-detail/${service.id}'),
                       );
                     },
                   ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -302,4 +352,13 @@ class _RepairShopDetailPageState extends State<RepairShopDetailPage> {
       ),
     );
   }
+
+  Widget _buildSpecChip(IconData icon, String label) {
+    return Chip(
+      avatar: Icon(icon, size: 20),
+      label: Text(label),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+    );
+  }
+
 }

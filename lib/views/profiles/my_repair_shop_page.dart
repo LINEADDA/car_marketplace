@@ -39,7 +39,7 @@ class _MyRepairShopPageState extends State<MyRepairShopPage> {
       _error = null;
     });
     try {
-      final shops = await _repairShopService.getShopsByOwnerId(_currentUserId);
+      final shops = await _repairShopService.getShopsByOwner(_currentUserId);
       if (!mounted) return;
       setState(() => _myShops = shops);
     } catch (e) {
@@ -73,7 +73,7 @@ class _MyRepairShopPageState extends State<MyRepairShopPage> {
     if (!mounted) return;
     if (confirm == true) {
       try {
-        await _repairShopService.deleteRepairShop(id, ownerId);
+        await _repairShopService.deleteRepairShop(id);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shop deleted successfully')),

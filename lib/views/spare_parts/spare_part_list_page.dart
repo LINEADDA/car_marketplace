@@ -11,6 +11,7 @@ import '../../widgets/app_scaffold_with_nav.dart';
 class SparePartListPage extends StatefulWidget {
   const SparePartListPage({super.key});
 
+
   @override
   State<SparePartListPage> createState() => _SparePartListPageState();
 }
@@ -23,6 +24,7 @@ class _SparePartListPageState extends State<SparePartListPage> {
   final Map<String, List<String>> _signedUrlsCache = {};
   bool _isLoading = false;
   String? _error;
+
 
   final String? currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
@@ -41,12 +43,15 @@ class _SparePartListPageState extends State<SparePartListPage> {
       _error = null;
     });
 
+
     try {
       // Load all spare parts (single list as requested)
-      final allSpareParts = await _sparePartService.getAllSpareParts();
+      final allSpareParts = await _sparePartService.getAllPublicSpareParts();
+
 
       // Generate signed URLs for all spare parts
       await _generateSignedUrls(allSpareParts);
+
 
       if (mounted) {
         setState(() {
@@ -113,10 +118,6 @@ class _SparePartListPageState extends State<SparePartListPage> {
       title: 'Spare Parts',
       currentRoute: '/spare-parts/browse',
       body: _buildSparePartsList(_allSpareParts),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/spare-parts/add'),
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
@@ -132,7 +133,10 @@ class _SparePartListPageState extends State<SparePartListPage> {
           children: [
             Text('Error: $_error', style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _loadSpareParts, child: const Text('Retry')),
+            ElevatedButton(
+              onPressed: _loadSpareParts,
+              child: const Text('Retry'),
+            ),
           ],
         ),
       );
@@ -148,8 +152,10 @@ class _SparePartListPageState extends State<SparePartListPage> {
     }
 
     // Put current user's parts first
-    final myParts = spareParts.where((part) => part.ownerId == currentUserId).toList();
-    final otherParts = spareParts.where((part) => part.ownerId != currentUserId).toList();
+    final myParts =
+        spareParts.where((part) => part.ownerId == currentUserId).toList();
+    final otherParts =
+        spareParts.where((part) => part.ownerId != currentUserId).toList();
     final sortedParts = [...myParts, ...otherParts];
 
     return RefreshIndicator(
@@ -308,5 +314,5 @@ class _SparePartListPageState extends State<SparePartListPage> {
       ),
     );
   }
-  
+
 }
